@@ -17,7 +17,7 @@ use std::{
 pub use shell::{CommandOutcome, CommandState, OutputTail, RunCommandArgs, STDERR_LINE};
 pub use shell::{RunCommand, shell_available};
 pub use workspace::{
-    EditFile, FindFiles, ListDirectory, ReadFile, SearchFiles, Workspace, WriteFile,
+    EditFile, ExistingText, FindFiles, ListDirectory, ReadFile, SearchFiles, Workspace, WriteFile,
 };
 
 /// Names of the workspace tools Hotline Agent offers, in the order they are

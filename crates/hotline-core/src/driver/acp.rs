@@ -46,7 +46,7 @@ use crate::contract::{
 use crate::mcp::server::{Served, TeammateTools};
 use crate::mcp::{self, HttpAuth, McpServer, McpTransport};
 use crate::session::ledger::ToolLedger;
-use crate::tools::Workspace;
+use crate::tools::{ExistingText, Workspace};
 use crate::vault::Vault;
 use agent_client_protocol::schema::ProtocolVersion;
 use agent_client_protocol::schema::v1::{
@@ -270,21 +270,16 @@ pub(crate) fn materialize_agents_md_with_capability(
     .map_err(|error| std::io::Error::other(error.to_string()))?;
     let file = Path::new("AGENTS.md");
     // A linked AGENTS.md is the repository's (a shared instructions file, as
-    // monorepos and harnesses keep them), not Hotline's. It is skipped before
-    // anything is read through it, so the session starts and nothing outside
-    // the workspace is touched.
-    if workspace
-        .is_symlink_path(file)
+    // monorepos and harnesses keep them), not Hotline's: it is left alone and
+    // never read through, so the session starts and nothing outside the
+    // workspace is touched.
+    match workspace
+        .read_existing_text(file)
         .map_err(|error| std::io::Error::other(error.to_string()))?
     {
-        return Ok(());
-    }
-    if let Some(current) = workspace
-        .read_text_if_exists_path(file)
-        .map_err(|error| std::io::Error::other(error.to_string()))?
-        && !current.starts_with(MANAGED_MARKER)
-    {
-        return Ok(());
+        ExistingText::Link => return Ok(()),
+        ExistingText::Text(current) if !current.starts_with(MANAGED_MARKER) => return Ok(()),
+        ExistingText::Absent | ExistingText::Text(_) => {}
     }
     let goal = persona.goal.trim();
     let body = if goal.is_empty() {

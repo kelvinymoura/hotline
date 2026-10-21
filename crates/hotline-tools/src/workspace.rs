@@ -83,6 +83,22 @@ pub struct Workspace {
     inner: Arc<WorkspaceInner>,
 }
 
+/// What [`Workspace::read_existing_text`] found at a path.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ExistingText {
+    Absent,
+    /// A symbolic link, left unread.
+    Link,
+    Text(String),
+}
+
+/// What a read that never follows a final symlink found.
+enum Entry {
+    Absent,
+    Link,
+    File(Vec<u8>),
+}
+
 impl Workspace {
     pub fn open(cwd: PathBuf, reach: Reach, overflow: PathBuf) -> Result<Self, ToolError> {
         Self::open_with_capability(cwd, reach, overflow, &[], None)
@@ -206,33 +222,22 @@ impl Workspace {
         Ok(kept.join("\n"))
     }
 
-    /// Whether the entry at `path` is itself a symbolic link, without following
-    /// it. Absent is not a link. Lets a caller that preserves handwritten files
-    /// leave a linked one alone instead of refusing it.
-    pub fn is_symlink_path(&self, path: &Path) -> Result<bool, ToolError> {
-        self.check_capability()?;
-        let requested = self.callback_path(path)?;
-        let (place, relative) = self.locate(&requested, false)?;
-        match self.dir(place).symlink_metadata(&relative) {
-            Ok(metadata) => Ok(metadata.file_type().is_symlink()),
-            Err(error) if error.kind() == ErrorKind::NotFound => Ok(false),
-            Err(error) => Err(error.into()),
-        }
-    }
-
     /// Reads an optional managed file without following its final symlink.
-    /// The distinction between absent and inaccessible matters to callers
-    /// that preserve handwritten files, such as the ACP identity materializer.
-    pub fn read_text_if_exists_path(&self, path: &Path) -> Result<Option<String>, ToolError> {
+    /// Absent, linked and present are distinct answers: callers that preserve
+    /// handwritten files, such as the ACP identity materializer, leave a link
+    /// alone rather than refusing it, and never read through it.
+    pub fn read_existing_text(&self, path: &Path) -> Result<ExistingText, ToolError> {
         self.check_capability()?;
         let requested = self.callback_path(path)?;
         let (place, relative) = self.locate(&requested, false)?;
-        let Some(bytes) = self.read_optional(place, &relative)? else {
-            return Ok(None);
+        let bytes = match self.read_entry(place, &relative)? {
+            Entry::Absent => return Ok(ExistingText::Absent),
+            Entry::Link => return Ok(ExistingText::Link),
+            Entry::File(bytes) => bytes,
         };
         let text = String::from_utf8(bytes)
             .map_err(|_| ToolError::new(format!("{} is not a UTF-8 text file.", path.display())))?;
-        Ok(Some(text))
+        Ok(ExistingText::Text(text))
     }
 
     /// Atomically writes a protocol callback file through the same mutation
@@ -926,16 +931,26 @@ impl Workspace {
     }
 
     fn read_optional(&self, place: Place, relative: &Path) -> Result<Option<Vec<u8>>, ToolError> {
+        match self.read_entry(place, relative)? {
+            Entry::Absent => Ok(None),
+            Entry::Link => Err(ToolError::new(
+                "Mutating files through symbolic links is not allowed.",
+            )),
+            Entry::File(bytes) => Ok(Some(bytes)),
+        }
+    }
+
+    /// Reads a file without following its final symlink, saying which of
+    /// absent, linked or present it found.
+    fn read_entry(&self, place: Place, relative: &Path) -> Result<Entry, ToolError> {
         let dir = self.dir(place);
         let metadata = match dir.symlink_metadata(relative) {
             Ok(metadata) => metadata,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Entry::Absent),
             Err(error) => return Err(error.into()),
         };
         if metadata.file_type().is_symlink() {
-            return Err(ToolError::new(
-                "Mutating files through symbolic links is not allowed.",
-            ));
+            return Ok(Entry::Link);
         }
         if !metadata.is_file() {
             return Err(ToolError::new(format!(
@@ -955,7 +970,7 @@ impl Workspace {
                 display_relative(relative)
             )));
         }
-        Ok(Some(bytes))
+        Ok(Entry::File(bytes))
     }
 
     fn atomic_write(&self, place: Place, relative: &Path, content: &[u8]) -> Result<(), ToolError> {
