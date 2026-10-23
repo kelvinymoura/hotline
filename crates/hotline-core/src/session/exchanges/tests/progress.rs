@@ -1294,6 +1294,112 @@ async fn an_account_switch_ends_the_delegations_of_the_teammate_it_applies_to() 
     );
 }
 
+fn switch_pending(room: &Room, id: &str) -> bool {
+    room.session_account(id, None).is_some()
+}
+
+/// What `id`'s sender was told of it: its result or answer, and any stop.
+fn told_ada(room: &Room, id: &str) -> Vec<serde_json::Value> {
+    room.tape("ada")
+        .into_iter()
+        .filter(|v| v["id"] == format!("exchange-ended:{id}") || v["cause"]["requestId"] == id)
+        .collect()
+}
+
+/// A switch waiting on a handoff's turn applies as soon as that turn ends,
+/// before the pair's worker has handed its result back. The delegation ends
+/// with the switch, but the work it finished is heard as usual.
+#[tokio::test]
+async fn a_switch_applied_as_a_handoffs_turn_ends_lets_its_result_through() {
+    for main_conversation_up in [false, true] {
+        let log = scratch(&format!("progress-switch-result-{main_conversation_up}"));
+        for id in ["ada", "carol"] {
+            enrol(&log, &persona(id));
+        }
+        on_an_account(&log, "bob");
+        let handed = handed_off_in(log, "end_turn").await;
+        let room = &handed.room;
+        if main_conversation_up {
+            room.start("bob").await.unwrap();
+        }
+        room.assign_account("bob", Some(ACCOUNT_B.into()))
+            .await
+            .unwrap();
+        assert!(
+            switch_pending(room, "bob"),
+            "it waits for the handoff's turn"
+        );
+        handed.bob_gate.add_permits(2);
+        until("the switch applies and the handoff settles", || {
+            !switch_pending(room, "bob")
+                && matches!(
+                    request(room, "ada~bob", &handed.handoff).phase,
+                    Phase::Done | Phase::Stopped
+                )
+        })
+        .await;
+        let handoff = request(room, "ada~bob", &handed.handoff);
+        assert_eq!(
+            (handoff.phase, handoff.failed, handoff.released),
+            (Phase::Done, false, true),
+            "{main_conversation_up}"
+        );
+        let told = told_ada(room, &handed.handoff);
+        assert_eq!(told.len(), 1, "{main_conversation_up} {told:?}");
+        assert_eq!(told[0]["kind"], "delivery");
+        assert_eq!(told[0]["cause"]["status"], "done");
+        assert_eq!(told[0]["text"], "I asked Carol which colour.");
+    }
+}
+
+/// The same for a question its main conversation answered in the turn the
+/// switch waited on.
+#[tokio::test]
+async fn a_switch_applied_as_a_question_is_answered_lets_the_answer_through() {
+    let log = scratch("progress-switch-answer");
+    enrol(&log, &persona("ada"));
+    on_an_account(&log, "bob");
+    let gate = Arc::new(Semaphore::new(0));
+    let bob =
+        Fake::new(Scripted::new(turn("blue", "Use the blue one.", "end_turn")).gated(gate.clone()));
+    let room = Room::with_agents(
+        log,
+        Arc::new(DeskKeys),
+        Arc::new(super::gates::Apart {
+            bob: bob.clone(),
+            others: Fake::new(Scripted::new(turn("heard", "Heard.", "end_turn"))),
+        }),
+    );
+    room.allow_sender("bob", "ada").unwrap();
+    let ask = send(&room, "ask").await;
+    until("bob's main conversation is answering", || {
+        bob.prompts().len() == 1
+    })
+    .await;
+    room.assign_account("bob", Some(ACCOUNT_B.into()))
+        .await
+        .unwrap();
+    assert!(
+        switch_pending(&room, "bob"),
+        "it waits for the answering turn"
+    );
+    gate.add_permits(2);
+    until("the switch applies and the question settles", || {
+        !switch_pending(&room, "bob")
+            && matches!(
+                request(&room, "ada~bob", &ask).phase,
+                Phase::Done | Phase::Stopped
+            )
+    })
+    .await;
+    let answer = request(&room, "ada~bob", &ask);
+    assert_eq!((answer.phase, answer.failed), (Phase::Done, false));
+    let told = told_ada(&room, &ask);
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert_eq!(told[0]["kind"], "delivery");
+    assert_eq!(told[0]["text"], "Use the blue one.");
+}
+
 #[test]
 fn only_a_handoff_is_released_and_a_request_not_released_saves_without_it() {
     let mut handoff = saved_request("handoff", Intent::Handoff, Phase::Done);

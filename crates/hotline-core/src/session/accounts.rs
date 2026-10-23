@@ -280,6 +280,7 @@ impl Room {
         let Some((pending, backend_id)) = self.switch_to_apply(persona_id) else {
             return Ok(());
         };
+        self.keep_finished_answers(persona_id);
         // Before the clear: a late turn on the old lease writes no checkpoint.
         self.invalidate(persona_id)?;
         room::clear_backend_checkpoints(&self.log, persona_id, &backend_id)?;
@@ -298,6 +299,7 @@ impl Room {
         self.drop_sides(persona_id);
         self.let_go_of_jobs(Some(persona_id));
         self.peers.expire_grants(persona_id);
+        self.keep_finished_answers(persona_id);
         self.revoke_exchanges(persona_id);
         room::clear_backend_checkpoints(&self.log, persona_id, &backend_id)?;
         self.switch_applied(persona_id, &pending);

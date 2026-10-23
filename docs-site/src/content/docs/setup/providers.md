@@ -273,7 +273,8 @@ going back to the first account later starts fresh too.
 
 A switch also ends any [handoff](/docs/use/teammates-together/#handoffs) the
 teammate is working on or handed to a colleague, as stopping it would, and
-the teammate that handed it over is told.
+the teammate that handed it over is told. Work the teammate had already
+finished when the switch landed still reaches the teammate that asked for it.
 
 If you are on a call with the teammate when the switch lands, the call can
 still talk but can no longer look anything up or work. Hang up and call

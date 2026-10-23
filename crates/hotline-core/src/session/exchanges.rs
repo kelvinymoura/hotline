@@ -524,6 +524,28 @@ impl Room {
     pub(super) fn revoke_exchanges(&self, persona: &str) {
         self.stop_revoked_exchanges(Some(persona));
     }
+    /// A switch changes the account a teammate runs on, not what it may do:
+    /// what its turns already finished is its senders' to hear. Each request
+    /// it was given whose turn is over is bound to its sender's authority
+    /// alone, so the revocation the switch then makes leaves it to be heard.
+    pub(super) fn keep_finished_answers(&self, persona: &str) {
+        let _guard = lock(&self.exchange_lock);
+        let mut leases = lock(&self.exchange_leases);
+        for request in self.exchange_pairs().iter().flat_map(|pair| &pair.requests) {
+            if request.to == persona
+                && Self::turn_over(request)
+                && Self::exchange_pending(request)
+                && let Some((sender, recipient)) = leases.get_mut(&request.id)
+            {
+                *recipient = sender.clone();
+            }
+        }
+    }
+    /// Ends what `persona` holds or was given, and anything whose authority
+    /// lapsed. A request `persona` was given and has finished is left to be
+    /// heard only while the leases it holds here are current: a stop or a
+    /// policy change ends them first, a switch has bound it to its sender's
+    /// alone, and one from before a restart holds none.
     fn stop_revoked_exchanges(&self, persona: Option<&str>) {
         let _guard = lock(&self.exchange_lock);
         let mut stopped = Vec::new();
@@ -534,7 +556,13 @@ impl Room {
                 if ours {
                     changed |= progress::release(request);
                 }
+                let finished_under_current_authority = persona == Some(request.to.as_str())
+                    && Self::turn_over(request)
+                    && lock(&self.exchange_leases)
+                        .get(&request.id)
+                        .is_some_and(|(a, b)| a.is_current() && b.is_current());
                 if !Self::exchange_pending(request)
+                    || finished_under_current_authority
                     || (!ours && self.exchange_lease_current(&request.id))
                 {
                     continue;
@@ -559,6 +587,11 @@ impl Room {
         lock(&self.exchange_leases)
             .get(id)
             .is_none_or(|(a, b)| a.is_current() && b.is_current())
+    }
+    /// Whether the recipient's turn on a request has ended, with what came of
+    /// it saved for its sender.
+    fn turn_over(request: &Request) -> bool {
+        matches!(request.phase, Phase::Reply | Phase::Done)
     }
     /// Whether this id names a request of some pair: a delivery that merely
     /// carries a peer's name (a hand-written one, say) names none.

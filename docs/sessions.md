@@ -865,7 +865,13 @@ process never changes account: a switch waits until the whole teammate is
 idle, then starts it again Fresh on the new one (see [Checkpoints](#checkpoints)).
 Applying it is a policy change: idle side and call threads are archived, and
 a voice still connected to a call keeps its voice but not its tools or work,
-so the person hangs up and calls again.
+so the person hangs up and calls again. It ends the delegations the teammate
+holds or received, as any revocation does, but a result or an answer its
+turns had already finished still reaches its sender: the switch applies as
+the last turn ends, before the pair's worker hands that back, so it first
+binds each such request to its sender's authority alone
+(`keep_finished_answers`). A policy change or a stop still drops a result
+not yet heard.
 
 For ACP teammates, Settings → Reach shows the harness's advertised runtime
 mode and labels it **Externally managed**. The chat header shows only model
