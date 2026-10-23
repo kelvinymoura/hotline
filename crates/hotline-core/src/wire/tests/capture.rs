@@ -4,10 +4,17 @@ use crate::contract::{CredentialAnswer, CredentialValues, PersonaComputer};
 use crate::driver::CapabilityEpoch;
 use crate::session::tests::{DeskKeys, Fake, Scripted, enrol, persona};
 
-#[tokio::test]
-async fn capture_phone_answer_settles_both_seats_once_and_other_value_commands_are_refused() {
-    let root = tempfile::tempdir().unwrap();
-    let log = Log::open(root.path());
+/// Ada, with a computer, has asked on her main conversation for a GitHub login.
+struct AskedForALogin {
+    log: Log,
+    room: Arc<Room>,
+    desk: Arc<dyn RoomHandle>,
+    vault: Arc<crate::vault::Vault>,
+    pending: Value,
+}
+
+async fn asked_for_a_login(root: &std::path::Path) -> AskedForALogin {
+    let log = Log::open(root);
     let mut ada = persona("ada");
     ada.name = "Pork Chop".into();
     ada.computer = Some(PersonaComputer {
@@ -22,7 +29,7 @@ async fn capture_phone_answer_settles_both_seats_once_and_other_value_commands_a
     enrol(&log, &ada);
     let vault = Arc::new(
         crate::vault::Vault::open_with_store(
-            root.path(),
+            root,
             log.clone(),
             Arc::new(crate::credentials::MemoryStore::default()),
         )
@@ -38,15 +45,26 @@ async fn capture_phone_answer_settles_both_seats_once_and_other_value_commands_a
     );
     let desk: Arc<dyn RoomHandle> =
         Arc::new(crate::desk::Desk::with_room(log.clone(), room.clone()));
-    let _turn = room.open_posting(&ThreadId::dm("ada"), None);
-    TeammateTools::new(&room,"ada").with_capability(CapabilityEpoch::default().lease()).call("request_credential",&json!({"site":"https://github.com","kind":"login","name":"GITHUB_LOGIN","reason":"Sign in to the repository"})).await.unwrap();
+    {
+        let _turn = room.open_posting(&ThreadId::dm("ada"), None);
+        TeammateTools::new(&room,"ada").with_capability(CapabilityEpoch::default().lease()).call("request_credential",&json!({"site":"https://github.com","kind":"login","name":"GITHUB_LOGIN","reason":"Sign in to the repository"})).await.unwrap();
+    }
     let pending = log
         .load(&StreamId::Tape("ada".into()))
         .into_iter()
         .find(|e| e["kind"] == "credential_ask")
         .unwrap();
-    let action_id = pending["actionId"].as_str().unwrap();
-    let submitted = CredentialAnswer {
+    AskedForALogin {
+        log,
+        room,
+        desk,
+        vault,
+        pending,
+    }
+}
+
+fn a_login_for(action_id: &str) -> CredentialAnswer {
+    CredentialAnswer {
         action_id: action_id.into(),
         name: Some("GITHUB_LOGIN".into()),
         values: Some(CredentialValues {
@@ -55,7 +73,21 @@ async fn capture_phone_answer_settles_both_seats_once_and_other_value_commands_a
             totp: None,
         }),
         ask: false,
-    };
+    }
+}
+
+#[tokio::test]
+async fn capture_phone_answer_settles_both_seats_once_and_other_value_commands_are_refused() {
+    let root = tempfile::tempdir().unwrap();
+    let AskedForALogin {
+        log,
+        desk,
+        vault,
+        pending,
+        ..
+    } = asked_for_a_login(root.path()).await;
+    let action_id = pending["actionId"].as_str().unwrap();
+    let submitted = a_login_for(action_id);
     for seat in [Seat::Owner, Seat::Phone] {
         let snapshot = super::asks::seat_snapshot(seat, &desk, &log, json!({"tape":"ada"})).await;
         assert!(
@@ -115,4 +147,38 @@ fn capture_malformed_values_and_debug_never_echo_typed_values() {
         .unwrap_err();
         assert!(!error.contains("SECRET_SENTINEL"));
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_captured_login_grant_and_a_checkpoint_write_never_undo_each_other() {
+    let root = tempfile::tempdir().unwrap();
+    let AskedForALogin {
+        log,
+        room,
+        desk,
+        pending,
+        ..
+    } = asked_for_a_login(root.path()).await;
+    let backend_id = crate::room::roster(&log)[0].backend_id.clone();
+    crate::room::checkpoint_session(&log, "ada", &backend_id, None, "s1").unwrap();
+    let (go, clearing) = crate::test_support::clearing_checkpoints(&log, "ada");
+    let frame = json!({"id":1,"cmd":"secrets.capture.answer",
+        "params":a_login_for(pending["actionId"].as_str().unwrap())});
+    let answering = tokio::spawn({
+        let log = log.clone();
+        async move { remote_control_answer(Seat::Owner, &desk, &log, &Parts::default(), frame).await }
+    });
+    crate::test_support::until("the answer holds the policy gate", || {
+        room.policy_update_lock().try_lock().is_err() || answering.is_finished()
+    })
+    .await;
+    go.send(()).unwrap();
+    clearing.join().unwrap();
+    let reply = answering.await.unwrap();
+    assert_eq!(reply["ok"], true, "{reply}");
+    let ada = crate::room::roster(&log).remove(0);
+    assert_eq!(
+        (ada.computer.unwrap().secrets, ada.session_checkpoints),
+        (Some(vec!["GITHUB_LOGIN".to_string()]), Vec::new())
+    );
 }

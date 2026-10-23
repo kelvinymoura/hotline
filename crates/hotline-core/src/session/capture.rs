@@ -380,6 +380,7 @@ impl Room {
     }
 
     fn grant_captured_secret(&self, persona_id: &str, name: &str) -> Result<(), String> {
+        let _writes = room::persona_write_lock();
         let mut persona = self.persona(persona_id)?;
         let computer = persona
             .computer
