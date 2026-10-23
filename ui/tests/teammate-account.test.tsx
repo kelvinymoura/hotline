@@ -318,6 +318,9 @@ describe("a Hotline Agent teammate's account", () => {
 		expect(text()).toContain("Switches to Key B when its work ends.");
 		expect(text()).not.toContain("In use");
 		expect(checked("Key B", ANTHROPIC)).toBe(true);
+		// In a narrow pane the two wrap, and Keep is never wider than its row, rather than overflowing its left edge.
+		expect(button("Stop and switch now").parentElement?.className).toContain("flex-wrap");
+		expect(button("Keep Key A").className).toContain("max-w-full");
 
 		await click("Keep Key A");
 		expect(calls).toContainEqual(["persona.account", { personaId: "ada", accountId: null }]);
