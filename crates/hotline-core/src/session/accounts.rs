@@ -216,15 +216,19 @@ impl Room {
         )
     }
 
+    /// `session` is the account the main conversation's session started
+    /// on, when one is up. With none, what runs is the teammate's threads,
+    /// jobs and calls, each built on the account a pending switch is from.
     pub(super) fn session_account(
         &self,
         persona_id: &str,
-        running: Option<String>,
+        session: Option<Option<String>>,
     ) -> Option<SessionAccount> {
         let pending = lock(&self.accounts.switches).get(persona_id).cloned();
         let held = pending
             .as_ref()
             .and_then(|pending| self.account_hold(pending.wanted.as_deref()));
+        let running = session.unwrap_or_else(|| pending.as_ref().and_then(|p| p.from.clone()));
         switch::session_account(running, pending.as_ref(), held)
     }
 

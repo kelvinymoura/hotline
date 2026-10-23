@@ -124,7 +124,7 @@ impl Desk {
         assert_eq!(
             self.room.assign_account("ada", Some(A.to_string())).await,
             Ok(SessionAccount {
-                running: None,
+                running: Some(B.to_string()),
                 wanted: Some(A.to_string()),
                 held: Some(held),
             })

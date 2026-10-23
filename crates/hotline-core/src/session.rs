@@ -841,11 +841,14 @@ impl Room {
     /// What the teammate's session is doing. A teammate with no session is
     /// idle, which is a state and not an absence.
     pub fn info(&self, persona_id: &str) -> SessionInfo {
-        let (mut info, running) = match lock(&self.sessions).get(persona_id) {
-            Some(session) => (lock(&session.info).clone(), session.account_id.clone()),
+        let (mut info, session) = match lock(&self.sessions).get(persona_id) {
+            Some(session) => (
+                lock(&session.info).clone(),
+                Some(session.account_id.clone()),
+            ),
             None => (idle_info(persona_id), None),
         };
-        info.account = self.session_account(persona_id, running);
+        info.account = self.session_account(persona_id, session);
         for processes in self.sides.processes(persona_id) {
             info.processes.extend(processes.listed());
         }

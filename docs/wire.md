@@ -341,7 +341,10 @@ ordered worker, and `persona.account` its teammate's lane. The desk rechecks
 the accounts in use once when it opens. `persona.account` stores the choice
 at once; the switch applies once the whole teammate is idle (no DM turn, a
 colleague's ask included, and no side thread, call, job or subagent
-mid-turn) and the account is not held. `held` says why it waits, on an
+mid-turn) and the account is not held. While it waits, `running` is the
+account what runs now is on: the main conversation's session, or, with that
+session down, the account the switch is from, which every thread, job and
+call is built on until it applies. `held` says why it waits, on an
 agent account only: `not_signed_in` while the account's last recorded
 status is signed out, a check in progress
 included, `signing_in` while a sign-in for it runs. Applying it ends the
