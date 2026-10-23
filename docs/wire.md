@@ -639,7 +639,10 @@ it writes `effortId` (or `null` when `value` is empty) first and
 switches a live session second. A value the teammate's effective model
 does not list is refused; when no model is known yet, the value is
 accepted. An ACP teammate goes only to the live session — idle is "That
-teammate is not running." A companion phone may set a config only when the
+teammate is not running." — and once the harness has taken a value of the
+option it reports in the effort category, whatever it named it, that value is
+written as `effortId`, for its next session to be asked for again; any other
+setting a harness serves is the session's alone. A companion phone may set a config only when the
 live session reports it in the effort category, whatever the harness named
 it, because a harness may serve anything as a config, a permission posture
 included. `models.efforts` is the idle picker's list for
@@ -652,8 +655,10 @@ nothing sent. The stored `effortId` always wins over the default, and a
 model switch to one that does not list the stored level falls back to the
 new model's default.
 
-`effortId` on the persona is the stored effort, optional like `modeId`.
-An ACP teammate does not store one: the harness owns its config ids.
+`effortId` on the persona is the stored effort, optional like `modeId`. On
+an ACP teammate it is the harness's own value: a start asks for it on the
+harness's effort option only while that option still lists it, so a value it
+no longer offers leaves the harness's default and nothing fails.
 
 `models.catalog` lists a provider's discovered models when available, with
 manual additions and bundled metadata matched by exact provider/model ID.

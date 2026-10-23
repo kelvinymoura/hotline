@@ -242,3 +242,125 @@ async fn setting_a_config_and_a_mode_at_once_does_not_wedge_the_driver() {
     }
     panic!("the driver stopped answering: two callers are holding each other's lock");
 }
+
+/// An agent whose sessions advertise its own reasoning option, `reasoning`,
+/// at `high` until it is set, with the values `offered`; each setting it is
+/// asked for is heard.
+fn reasoning_agent(
+    offered: &'static [(&'static str, &'static str)],
+    set: Arc<Mutex<Vec<(String, String)>>>,
+) -> impl std::future::Future<Output = ()> + Send + 'static {
+    let transport = agent_pipes();
+    let reasoning = move |current: &str| {
+        select_config(
+            "reasoning",
+            "Reasoning",
+            acp::SessionConfigOptionCategory::ThoughtLevel,
+            current,
+            offered,
+        )
+    };
+    async move {
+        let running = agent_client_protocol::Agent
+            .builder()
+            .name("reasoning")
+            .on_receive_request(
+                async move |request: InitializeRequest, responder, _cx| {
+                    responder.respond(
+                        InitializeResponse::new(request.protocol_version)
+                            .agent_capabilities(AgentCapabilities::new()),
+                    )
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                async move |_request: NewSessionRequest,
+                            responder: Responder<NewSessionResponse>,
+                            _cx| {
+                    responder.respond(
+                        NewSessionResponse::new(SessionId::new("fresh-session"))
+                            .config_options(vec![reasoning("high")]),
+                    )
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .on_receive_request(
+                move |request: SetSessionConfigOptionRequest,
+                      responder: Responder<acp::SetSessionConfigOptionResponse>,
+                      _cx| {
+                    let set = set.clone();
+                    async move {
+                        let value = match &request.value {
+                            acp::SessionConfigOptionValue::ValueId { value } => value.0.to_string(),
+                            _ => String::new(),
+                        };
+                        set.lock()
+                            .unwrap()
+                            .push((request.config_id.0.to_string(), value.clone()));
+                        responder.respond(acp::SetSessionConfigOptionResponse::new(vec![
+                            reasoning(&value),
+                        ]))
+                    }
+                },
+                agent_client_protocol::on_receive_request!(),
+            )
+            .connect_to(transport)
+            .await;
+        if let Err(error) = running {
+            eprintln!("the reasoning agent ended: {error}");
+        }
+    }
+}
+
+/// The effort the person picked is put back on the harness's own option when
+/// the next session starts, while the harness still offers that value; one it
+/// no longer offers, or none stored, leaves the harness's default.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stored_effort_is_asked_for_again_only_while_the_harness_offers_it() {
+    for (stored, offered, asked, runs_at) in [
+        (
+            Some("low"),
+            &[("low", "Low"), ("high", "High")][..],
+            vec![("reasoning".to_string(), "low".to_string())],
+            "low",
+        ),
+        (
+            Some("low"),
+            &[("medium", "Medium"), ("high", "High")][..],
+            vec![],
+            "high",
+        ),
+        (
+            Some("high"),
+            &[("low", "Low"), ("high", "High")][..],
+            vec![],
+            "high",
+        ),
+        (
+            None,
+            &[("low", "Low"), ("high", "High")][..],
+            vec![],
+            "high",
+        ),
+    ] {
+        let held = room("effort-room");
+        let set = Arc::new(Mutex::new(Vec::new()));
+        tokio::spawn(reasoning_agent(offered, set.clone()));
+        let driver = ChildAgent::new(
+            scratch("effort"),
+            "cursor".to_string(),
+            String::new(),
+            TeammateTools::new(&held, "ada"),
+        );
+        let mut ada = persona(&scratch_cwd(), Vec::new());
+        ada.effort_id = stored.map(str::to_string);
+        let info = driver.handshake(&ada, client_transport()).await.unwrap();
+        assert_eq!(*set.lock().unwrap(), asked, "{stored:?} {offered:?}");
+        assert_eq!(info.configs.len(), 1);
+        assert_eq!(
+            info.configs[0].current_id.as_deref(),
+            Some(runs_at),
+            "{stored:?} {offered:?}"
+        );
+    }
+}

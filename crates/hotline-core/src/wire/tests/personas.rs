@@ -329,6 +329,59 @@ async fn session_set_config_on_an_acp_teammate_goes_to_the_room() {
     assert_eq!(answer["result"]["configs"][0]["currentId"], "high");
 }
 
+/// The effort the person picks for a harness is kept as the value of the
+/// harness's own effort option, whatever it calls it, so its next session
+/// asks for it again; a setting of any other kind is the session's alone.
+#[tokio::test]
+async fn an_effort_picked_for_an_acp_teammate_is_kept_and_nothing_else_is() {
+    let (_root, log, port) = door("set-config-acp-kept");
+    let mut socket = desk(port).await;
+    let draft = PersonaDraft {
+        name: "Bob".to_string(),
+        goal: None,
+        team: None,
+        backend_id: Some("cursor".to_string()),
+        cwd: None,
+        reach: None,
+        folders: None,
+        model_id: None,
+        effort_id: None,
+        computer: None,
+        background_work: None,
+        account_id: None,
+    };
+    ask(
+        &mut socket,
+        json!({ "id": 1, "cmd": "persona.create", "params": { "draft": draft } }),
+    )
+    .await;
+    let id = answered(&mut socket, 1).await["result"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let effort = |log: &Log| {
+        room::roster(log)
+            .into_iter()
+            .find(|persona| persona.id == id)
+            .unwrap()
+            .effort_id
+    };
+    for (n, config, value) in [(2, "approval", "ask"), (3, "reasoning", "low")] {
+        ask(
+            &mut socket,
+            json!({
+                "id": n,
+                "cmd": "session.set_config",
+                "params": { "personaId": id, "configId": config, "value": value },
+            }),
+        )
+        .await;
+        assert_eq!(answered(&mut socket, n).await["ok"], true);
+        let kept = (config == "reasoning").then(|| value.to_string());
+        assert_eq!(effort(&log), kept, "{config}");
+    }
+}
+
 #[tokio::test]
 async fn persona_create_fills_model_id_from_the_room_default() {
     let (_root, _log, port) = door("create-default-model");

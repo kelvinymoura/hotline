@@ -97,8 +97,10 @@ pub(super) async fn set_model(
 }
 
 /// Write a Hotline Agent teammate's effort first, then switch a live session
-/// if there is one. An ACP teammate has no stored effort: the harness owns
-/// its config ids, and a live session is required.
+/// if there is one. An ACP teammate's setting goes to its live session, which
+/// is required, since the harness owns its config ids; an effort the harness
+/// took is then kept as the value of its own option, which the next session
+/// is asked for again while the harness still offers it.
 pub(super) async fn set_config(
     log: &Log,
     room: &Arc<dyn RoomHandle>,
@@ -112,6 +114,13 @@ pub(super) async fn set_config(
         // the change is remembered the same way a start's report is.
         let info = room.set_config(persona_id, config_id, value).await?;
         remember_model(log, room, &persona).await?;
+        if crate::wire::phone::effort_config(room, persona_id, config_id) {
+            let gate = room.policy_update_lock();
+            let _held = gate.lock().await;
+            if living(log, persona_id)?.effort_id.as_deref() != Some(value) {
+                update_persona(log, room, persona_id, &json!({ "effortId": value }))?;
+            }
+        }
         return Ok(info);
     }
     if config_id != "effort" {

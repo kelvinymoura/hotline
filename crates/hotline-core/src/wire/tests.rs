@@ -705,6 +705,7 @@ impl RoomHandle for Quiet {
         Ok(idle(persona_id))
     }
 
+    /// As a harness whose own effort option is `reasoning` answers.
     async fn set_config(
         &self,
         persona_id: &str,
@@ -715,7 +716,8 @@ impl RoomHandle for Quiet {
         info.configs = vec![crate::contract::SessionConfig {
             id: config_id.to_string(),
             name: config_id.to_string(),
-            category: None,
+            category: (config_id == "reasoning")
+                .then_some(crate::contract::SessionConfigCategory::Effort),
             current_id: Some(value.to_string()),
             options: Vec::new(),
         }];
