@@ -344,8 +344,9 @@ colleague's ask included, and no side thread, call, job or subagent
 mid-turn) and the account is not held. `held` says why it waits, on an
 agent account only: `not_signed_in` while the account's last recorded
 status is signed out, a check in progress
-included, `signing_in` while a sign-in for it runs. Applying it archives the
-teammate's idle side and call threads and parks its job threads; a voice
+included, `signing_in` while a sign-in for it runs. Applying it ends the
+delegations the teammate holds or received, archives its idle side and call
+threads and parks its job threads; a voice
 still connected to one of its calls loses its tools and work until it is
 called again. On Hotline Agent it rebuilds the in-process driver on the new
 credential, handed the conversation, and a switch still pending outlives a

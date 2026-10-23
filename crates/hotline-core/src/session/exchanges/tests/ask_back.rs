@@ -13,7 +13,7 @@ use tokio::sync::Semaphore;
 
 /// Bob asks Ada, the teammate that handed him the thread `thread`, from
 /// inside it.
-async fn ask_back(room: &Arc<Room>, thread: &str) -> String {
+pub(super) async fn ask_back(room: &Arc<Room>, thread: &str) -> String {
     let sent = TeammateTools::new(room, "bob")
         .for_work(thread.to_string())
         .call(
@@ -27,7 +27,7 @@ async fn ask_back(room: &Arc<Room>, thread: &str) -> String {
 
 /// Puts a teammate in the ordinary workspace reach, where asking a colleague
 /// needs the person's grant.
-fn in_workspace(room: &Room, id: &str) {
+pub(super) fn in_workspace(room: &Room, id: &str) {
     let mut persona = room.persona(id).unwrap();
     persona.reach = Some(crate::contract::Reach::Workspace);
     crate::room::append_persona(&room.log, &persona).unwrap();
@@ -40,13 +40,13 @@ fn carded(room: &Room) -> bool {
         .any(|whose| room.tape(whose).iter().any(|v| v["kind"] == "permission"))
 }
 
-fn question_in(events: &[serde_json::Value], id: &str) -> Option<usize> {
+pub(super) fn question_in(events: &[serde_json::Value], id: &str) -> Option<usize> {
     events
         .iter()
         .position(|v| v["cause"]["kind"] == "question" && v["cause"]["requestId"] == id)
 }
 
-fn answer_in(room: &Room, thread: &str, id: &str) -> Option<serde_json::Value> {
+pub(super) fn answer_in(room: &Room, thread: &str, id: &str) -> Option<serde_json::Value> {
     in_thread(room, thread)
         .into_iter()
         .find(|v| v["kind"] == "delivery" && v["cause"]["requestId"] == id)
@@ -172,7 +172,7 @@ async fn a_delegated_threads_question_to_its_opener_reaches_the_job_it_was_hande
 }
 
 /// The card the person has not answered yet on `whose` tape.
-fn open_card(room: &Room, whose: &str) -> Option<serde_json::Value> {
+pub(super) fn open_card(room: &Room, whose: &str) -> Option<serde_json::Value> {
     room.tape(whose)
         .into_iter()
         .find(|v| v["kind"] == "permission" && v.get("decision").is_none())

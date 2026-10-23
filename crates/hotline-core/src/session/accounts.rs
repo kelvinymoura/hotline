@@ -298,6 +298,7 @@ impl Room {
         self.drop_sides(persona_id);
         self.let_go_of_jobs(Some(persona_id));
         self.peers.expire_grants(persona_id);
+        self.revoke_exchanges(persona_id);
         room::clear_backend_checkpoints(&self.log, persona_id, &backend_id)?;
         self.switch_applied(persona_id, &pending);
         let _ = self.info_changes.send(self.info(persona_id));

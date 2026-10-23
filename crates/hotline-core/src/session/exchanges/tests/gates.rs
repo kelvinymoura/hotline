@@ -64,6 +64,11 @@ pub(super) async fn handed_off(name: &str, first_turn_ends: &str) -> HandedOff {
     for id in ["ada", "bob", "carol"] {
         enrol(&log, &persona(id));
     }
+    handed_off_in(log, first_turn_ends).await
+}
+
+/// The same, among the teammates already enrolled in `log`.
+pub(super) async fn handed_off_in(log: Log, first_turn_ends: &str) -> HandedOff {
     let bob_gate = Arc::new(Semaphore::new(0));
     let carol_gate = Arc::new(Semaphore::new(0));
     let bob = Fake::new(

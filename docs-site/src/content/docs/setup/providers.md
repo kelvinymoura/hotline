@@ -271,6 +271,10 @@ A switch starts a new session on the new account, handed this conversation
 (**Fresh**). On Claude Code, another account's session is never reopened, so
 going back to the first account later starts fresh too.
 
+A switch also ends any [handoff](/docs/use/teammates-together/#handoffs) the
+teammate is working on or handed to a colleague, as stopping it would, and
+the teammate that handed it over is told.
+
 If you are on a call with the teammate when the switch lands, the call can
 still talk but can no longer look anything up or work. Hang up and call
 again. The call's thread is closed, so continue it in the Threads pane before

@@ -2,9 +2,10 @@
 //! reaches the teammate that handed it over as a report: shown at once, kept
 //! until heard, and heard once, one summary per thread. A report that may
 //! wake its delegator wakes it once when it is idle.
-use super::gates::{ask_carol, ask_from, handed_off, idle, request, turn};
+use super::ask_back::{answer_in, ask_back, in_workspace, open_card, question_in};
+use super::gates::{ask_carol, ask_from, handed_off, handed_off_in, idle, request, turn};
 use super::*;
-use crate::contract::{ScheduleKind, ScheduledJob, SideEnd};
+use crate::contract::{AgentAccount, End, ScheduleKind, ScheduledJob, SideEnd};
 use crate::session::exchanges::linked::take_sent;
 use crate::session::exchanges::progress::{REPORT_CHARS, TurnEnd, WAKE_LINE, release, turn_report};
 use crate::session::runner::Driven;
@@ -1169,6 +1170,128 @@ async fn an_unlinked_desk_ends_the_delegations_with_its_teammates() {
     assert!(far[0].progress.is_empty() && far[0].progress_left_out == 0 && !far[0].progress_wakes);
     assert!(!far[1].released, "a question is no delegation");
     assert!(!request(&room, "ada~bob", "near").released);
+}
+
+const ACCOUNT_A: &str = "11111111-1111-4111-8111-111111111111";
+const ACCOUNT_B: &str = "22222222-2222-4222-8222-222222222222";
+
+/// Two Claude Code accounts on the desk, and `id` enrolled on the first.
+fn on_an_account(log: &crate::log::Log, id: &str) {
+    let account = |id: &str, name: &str| AgentAccount {
+        id: id.into(),
+        backend_id: "claude-acp".into(),
+        name: name.into(),
+        created_at: 1,
+        login_at: Some(1),
+        setup: None,
+    };
+    crate::room::write_agent_accounts(
+        log,
+        &[account(ACCOUNT_A, "Work"), account(ACCOUNT_B, "Home")],
+    )
+    .unwrap();
+    enrol(
+        log,
+        &Persona {
+            backend_id: "claude-acp".into(),
+            account_id: Some(ACCOUNT_A.into()),
+            ..persona(id)
+        },
+    );
+}
+
+/// A switch is a revocation like any policy change: it applies once its
+/// teammate is idle, and ends the delegations that teammate received or
+/// handed out.
+#[tokio::test]
+async fn an_account_switch_ends_the_delegations_of_the_teammate_it_applies_to() {
+    for main_conversation_up in [false, true] {
+        let log = scratch(&format!("progress-switch-receiver-{main_conversation_up}"));
+        for id in ["ada", "carol"] {
+            enrol(&log, &persona(id));
+        }
+        on_an_account(&log, "bob");
+        let handed = handed_off_in(log, "end_turn").await;
+        let room = &handed.room;
+        if main_conversation_up {
+            room.start("bob").await.unwrap();
+        }
+        ask_carol(room, &handed.thread).await;
+        handed.bob_gate.add_permits(2);
+        until("the handoff waits on Carol and Bob is idle", || {
+            request(room, "ada~bob", &handed.handoff).phase == Phase::Waiting
+                && idle(room, &handed.thread)
+        })
+        .await;
+        room.assign_account("bob", Some(ACCOUNT_B.into()))
+            .await
+            .unwrap();
+        let handoff = request(room, "ada~bob", &handed.handoff);
+        assert_eq!(
+            (handoff.phase, handoff.failed, handoff.released),
+            (Phase::Stopped, true, true),
+            "{main_conversation_up}"
+        );
+        handed.carol_gate.add_permits(2);
+        handed.bob_gate.add_permits(2);
+        tokio::time::sleep(Duration::from_millis(150)).await;
+        let ended = format!("exchange-ended:{}", handed.handoff);
+        let told: Vec<_> = room
+            .tape("ada")
+            .into_iter()
+            .filter(|v| v["id"] == ended.as_str() || v["cause"]["requestId"] == handed.handoff)
+            .collect();
+        assert_eq!(told.len(), 1, "{main_conversation_up} {told:?}");
+        assert!(
+            told[0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("Collaboration was revoked")
+        );
+        assert_eq!(
+            room.link_of(&ThreadId::side(&handed.thread)).unwrap().state,
+            crate::thread::ThreadState::Closed(End::Stopped),
+            "{main_conversation_up}"
+        );
+        assert_eq!(
+            handed.bob.prompts().len(),
+            1,
+            "Carol's answer does not bring the stopped thread back"
+        );
+    }
+
+    let (room, agents) = setup("progress-switch-delegator");
+    on_an_account(&room.log, "ada");
+    in_workspace(&room, "bob");
+    room.allow_sender("bob", "ada").unwrap();
+    let (handoff, thread) = super::questions::handed_back(&room, &agents).await;
+    room.assign_account("ada", Some(ACCOUNT_B.into()))
+        .await
+        .unwrap();
+    is_released(&room, &handoff);
+    talks_without_a_report(&room, &handoff, &thread).await;
+    let id = ask_back(&room, &thread).await;
+    until("the question waits on the card for bob to ask ada", || {
+        open_card(&room, "bob").is_some()
+    })
+    .await;
+    assert!(question_in(&room.tape("ada"), &id).is_none());
+    let card = open_card(&room, "bob").unwrap();
+    room.answer_permission("bob", card["requestId"].as_str().unwrap(), "allow_always")
+        .await
+        .unwrap();
+    done(&room, &id).await;
+    let ada = room.tape("ada");
+    let question = question_in(&ada, &id).expect("it reaches Ada's main conversation");
+    assert!(
+        ada[question]["cause"]["work"].is_null(),
+        "{}",
+        ada[question]
+    );
+    assert_eq!(
+        answer_in(&room, &thread, &id).unwrap()["cause"]["status"],
+        "done"
+    );
 }
 
 #[test]
