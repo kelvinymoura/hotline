@@ -238,10 +238,10 @@ export function AccountRow({
 						<p className="text-sm text-ink-3">
 							What is running now stays on {nameOf(running)}. Stop and switch now stops all of {persona.name}'s work.
 						</p>
-						<div className="flex justify-end gap-2">
+						<div className="flex flex-wrap items-center justify-end gap-2">
 							{keepable && (
-								<button type="button" className="control btn-quiet" disabled={disabled || busy} onClick={() => void assign(running)}>
-									Keep {nameOf(running)}
+								<button type="button" className="control btn-quiet max-w-full" disabled={disabled || busy} onClick={() => void assign(running)}>
+									<span className="min-w-0 truncate">Keep {nameOf(running)}</span>
 								</button>
 							)}
 							<button type="button" className="control btn" disabled={disabled || busy} onClick={stopAndSwitch}>
