@@ -230,9 +230,9 @@ impl Room {
 
     fn account_idle(&self, persona_id: &str) -> bool {
         let dm = lock(&self.sessions).get(persona_id).cloned();
+        // A thread whose agent is still starting is built on the old account.
         !dm.is_some_and(|session| lock(&session.turns).running)
-            && !self.sides(persona_id).iter().any(|side| side.working)
-            && self.working_calls(persona_id).is_empty()
+            && !self.sides.of(persona_id).iter().any(|side| side.working())
             && self.working_jobs(persona_id).is_empty()
             && self.subagents(persona_id).is_empty()
     }
