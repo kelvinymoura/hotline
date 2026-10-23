@@ -21,6 +21,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tokio::sync::{Notify, Semaphore, mpsc, watch};
 
+mod accounts;
 #[cfg(unix)]
 mod capture;
 mod cards;
@@ -28,6 +29,7 @@ mod chapters;
 mod chat;
 #[cfg(unix)]
 mod computer;
+mod hotline_accounts;
 mod posting;
 mod preamble;
 mod reading;
@@ -365,6 +367,9 @@ pub(crate) struct Fake {
     /// When set, the summariser does not answer until this is notified.
     hold_note: Arc<tokio::sync::Notify>,
     holding: std::sync::atomic::AtomicBool,
+    /// Run once, the next time an agent is built: a test's way into the
+    /// moment between a session being looked for and being kept.
+    on_agent: Mutex<Option<Box<dyn FnOnce() + Send>>>,
 }
 
 impl Fake {
@@ -435,7 +440,13 @@ impl Fake {
             answer,
             hold_note: Arc::new(tokio::sync::Notify::new()),
             holding: std::sync::atomic::AtomicBool::new(false),
+            on_agent: Mutex::new(None),
         })
+    }
+
+    /// Runs `then` once, as the next agent is built.
+    pub(super) fn when_building(&self, then: impl FnOnce() + Send + 'static) {
+        *lock(&self.on_agent) = Some(Box::new(then));
     }
 }
 
@@ -453,6 +464,10 @@ impl Agents for Fake {
         lock(&self.seeds).push(said);
         lock(&self.views).push(persona.clone());
         lock(&self.tools).push(tools);
+        let then = lock(&self.on_agent).take();
+        if let Some(then) = then {
+            then();
+        }
         Ok(self.driver.clone())
     }
 
@@ -517,6 +532,7 @@ pub(crate) fn persona(id: &str) -> Persona {
         mode_id: None,
         effort_id: None,
         harness_override: None,
+        account_id: None,
         hop_notice: None,
         mcp_policy: McpPolicy {
             mode: PolicyMode::All,
@@ -778,6 +794,7 @@ async fn computer_room(
         agents.clone(),
         Computer::with_path(root.as_os_str()).with_releases(&url),
         Some(vault),
+        crate::driver::acp::StartBounds::default(),
     );
     ComputerRoom {
         room,

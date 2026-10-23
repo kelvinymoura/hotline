@@ -34,6 +34,7 @@ async fn capture_phone_answer_settles_both_seats_once_and_other_value_commands_a
         Fake::new(Scripted::turns(vec![vec![]])),
         crate::computer::Computer::new(),
         Some(vault.clone()),
+        crate::driver::acp::StartBounds::default(),
     );
     let desk: Arc<dyn RoomHandle> =
         Arc::new(crate::desk::Desk::with_room(log.clone(), room.clone()));
