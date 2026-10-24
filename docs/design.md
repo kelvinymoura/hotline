@@ -123,8 +123,8 @@ These come over as ideas and, where the code was already Rust, as code.
   trust in that harness. Its runtime mode lives in the Reach card, while
   model and effort stay in the chat header. The effort the person picks is
   kept like the model, as the value of the harness's own effort option, and
-  asked for again at the next start only while the harness still offers it
-  (decided 2026-10-23 at the operator's request; before, an ACP effort was the
+  asked for again at the next start only while the harness still offers it,
+  and a change of agent clears it (decided 2026-10-23 at the operator's request; before, an ACP effort was the
   live session's alone and a restart lost it). Hotline-mediated file callbacks
   remain confined to the workspace and the teammate's granted folders; a
   harness mode does not widen them.

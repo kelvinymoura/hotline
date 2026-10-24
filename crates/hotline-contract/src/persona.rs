@@ -91,7 +91,8 @@ pub struct Persona {
     /// option as the person last picked it, asked for again when the next
     /// session starts while the harness still offers it: the harness owns
     /// its ids, and one it no longer offers leaves its default. Absent means
-    /// the default.
+    /// the default. It belongs to the agent it was picked on, so a change of
+    /// `backendId` clears it unless the same change names one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effort_id: Option<String>,
     /// A configured fallback harness for a desk that cannot run this

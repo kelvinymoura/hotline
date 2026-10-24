@@ -442,14 +442,22 @@ pub(super) fn update_persona(
 }
 
 fn patched(record: &Persona, id: &str, patch: &Value) -> Result<Persona, String> {
+    let patch = patch
+        .as_object()
+        .ok_or("A patch is an object of fields to change.")?;
     let mut record = json!(record);
     let fields = record
         .as_object_mut()
         .expect("a teammate serializes as an object");
-    for (key, value) in patch
-        .as_object()
-        .ok_or("A patch is an object of fields to change.")?
-    {
+    // An effort is a value of one agent's own option: another agent starts
+    // on its default unless the patch names one for it.
+    let changes_agent = patch
+        .get("backendId")
+        .is_some_and(|backend| *backend != fields["backendId"]);
+    if changes_agent && !patch.contains_key("effortId") {
+        fields.remove("effortId");
+    }
+    for (key, value) in patch {
         fields.insert(key.clone(), value.clone());
     }
     fields.insert("id".into(), Value::from(id));

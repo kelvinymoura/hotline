@@ -658,7 +658,9 @@ new model's default.
 `effortId` on the persona is the stored effort, optional like `modeId`. On
 an ACP teammate it is the harness's own value: a start asks for it on the
 harness's effort option only while that option still lists it, so a value it
-no longer offers leaves the harness's default and nothing fails.
+no longer offers leaves the harness's default and nothing fails. It belongs to
+the agent it was picked on: a `persona.update` that changes `backendId`
+clears it, unless the same patch names one.
 
 `models.catalog` lists a provider's discovered models when available, with
 manual additions and bundled metadata matched by exact provider/model ID.
