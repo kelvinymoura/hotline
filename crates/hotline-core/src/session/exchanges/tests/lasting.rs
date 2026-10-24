@@ -5,10 +5,10 @@
 //! parked thread and a job's firing ending leave it standing, and so does a
 //! restart: the result, the reports and the questions back keep flowing.
 use super::ask_back::{ask_back, in_workspace, open_card, question_in};
-use super::gates::{idle, request, turn};
+use super::gates::{Apart, idle, request, turn};
 use super::progress::{
-    handed_over_and_done, heard_with, is_released, planted_job, room_with, says_ended,
-    talks_without_a_report,
+    ACCOUNT_B, claimed, handed_over_and_done, heard_with, is_released, on_an_account, planted_job,
+    room_with, says_ended, switch_pending, talks_without_a_report,
 };
 use super::questions::requested;
 use super::*;
@@ -191,6 +191,81 @@ async fn a_request_taken_up_after_a_restart_outlives_a_chapter_turning_over() {
     done(&room, "left-over").await;
     let result = request(&room, "ada~bob", "left-over");
     assert_eq!((result.failed, result.reply.as_str()), (false, "Built it."));
+}
+
+/// A stop of the teammate an account switch is restarting, or a policy
+/// change on it, ends its lasting authority whenever it lands, the restart
+/// included: the result it had finished, waiting unheard behind Ada's turn,
+/// is dropped and never heard.
+#[tokio::test]
+async fn a_stop_or_a_policy_change_while_a_switch_restarts_its_teammate_drops_its_unheard_result() {
+    for policy_change in [false, true] {
+        let log = scratch(&format!("lasting-switch-restarting-{policy_change}"));
+        enrol(&log, &persona("ada"));
+        on_an_account(&log, "bob");
+        let ada_gate = Arc::new(Semaphore::new(0));
+        let ada =
+            Fake::new(Scripted::new(turn("heard", "Heard.", "end_turn")).gated(ada_gate.clone()));
+        let bob_gate = Arc::new(Semaphore::new(0));
+        let starts = Arc::new(Semaphore::new(0));
+        let bob = Fake::new(
+            Scripted::new(turn("built", "Built it.", "end_turn"))
+                .gated(bob_gate.clone())
+                .slow_to_start(starts.clone()),
+        );
+        let room = Room::with_agents(
+            log,
+            Arc::new(DeskKeys),
+            Arc::new(Apart {
+                bob: bob.clone(),
+                others: ada.clone(),
+            }),
+        );
+        room.allow_sender("bob", "ada").unwrap();
+        // Bob's main conversation and his handoff's thread start at once.
+        starts.add_permits(2);
+        room.start("bob").await.unwrap();
+        room.start("ada").await.unwrap();
+        room.prompt("ada", "busy?", None, None).await.unwrap();
+        until("ada's turn is running", || claimed(&room)).await;
+        let handoff = send(&room, "handoff").await;
+        until("bob's handoff turn is running", || bob.prompts().len() == 1).await;
+        room.assign_account("bob", Some(ACCOUNT_B.into()))
+            .await
+            .unwrap();
+        assert!(switch_pending(&room, "bob"), "it waits for the turn");
+        bob_gate.add_permits(2);
+        until(
+            "the result waits behind ada's turn and the switch is restarting bob",
+            || request(&room, "ada~bob", &handoff).phase == Phase::Done && bob.views().len() == 3,
+        )
+        .await;
+
+        if policy_change {
+            room.invalidate("bob").unwrap();
+        } else {
+            room.stop("bob").unwrap();
+        }
+        starts.add_permits(1);
+        until("the restart has given up", || {
+            room.start_gate("bob").try_lock().is_ok()
+        })
+        .await;
+        let dropped = request(&room, "ada~bob", &handoff);
+        assert_eq!(
+            (dropped.phase, dropped.failed),
+            (Phase::Stopped, true),
+            "{policy_change}"
+        );
+        ada_gate.add_permits(8);
+        until("ada's turn is over", || !claimed(&room)).await;
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        assert!(
+            !request(&room, "ada~bob", &handoff).result_consumed,
+            "{policy_change}: the result is never heard"
+        );
+        assert_eq!(ada.prompts().len(), 1, "{policy_change}");
+    }
 }
 
 /// What a chapter's turnover leaves standing, every explicit end still

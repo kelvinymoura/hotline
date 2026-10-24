@@ -870,14 +870,16 @@ so the person hangs up and calls again. It ends the delegations the teammate
 holds or received, as any revocation does, but a result or an answer
 already given, by its turns or to it, still reaches its sender: the switch
 applies as the last turn ends, before the pair's worker hands that back, or
-while a result for it waits on Keep going. With the main conversation down
-the switch leaves the teammate's authority open, and the revocation passes
-over such a request. With it up the switch closes that authority while it
-restarts the session, so it first binds each such request whose lease of
-the teammate's is still current to its colleague's in its place
-(`keep_finished_answers`), and binds it to the teammate's reopened
-authority once the restart is over (`bind_kept_answers`). A policy change or
-a stop, before the switch or after it, still drops a result not yet heard.
+while a result for it waits on Keep going. A switch changes the account,
+not what the teammate may do, so it never ends the teammate's lasting
+authority, which a request holds (`Room::request_lease`): with the main
+conversation down it leaves the epoch alone, and with it up it replaces the
+session (`end_for_switch`, `CapabilityEpoch::replace_session`) as a chapter
+turning over does, and starts it again on the new account
+(`restart_held`). Either way the revocation passes over such a request. A
+stop or a policy change ends that authority whenever it lands, before the
+switch, while it restarts the session or after it, and so still drops a
+result not yet heard.
 
 For ACP teammates, Settings → Reach shows the harness's advertised runtime
 mode and labels it **Externally managed**. The chat header shows only model

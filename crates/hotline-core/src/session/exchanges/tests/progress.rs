@@ -1437,10 +1437,10 @@ async fn an_unlinked_desk_ends_the_delegations_with_its_teammates() {
 }
 
 const ACCOUNT_A: &str = "11111111-1111-4111-8111-111111111111";
-const ACCOUNT_B: &str = "22222222-2222-4222-8222-222222222222";
+pub(super) const ACCOUNT_B: &str = "22222222-2222-4222-8222-222222222222";
 
 /// Two Claude Code accounts on the desk, and `id` enrolled on the first.
-fn on_an_account(log: &crate::log::Log, id: &str) {
+pub(super) fn on_an_account(log: &crate::log::Log, id: &str) {
     let account = |id: &str, name: &str| AgentAccount {
         id: id.into(),
         backend_id: "claude-acp".into(),
@@ -1559,7 +1559,7 @@ async fn an_account_switch_ends_the_delegations_of_the_teammate_it_applies_to() 
     );
 }
 
-fn switch_pending(room: &Room, id: &str) -> bool {
+pub(super) fn switch_pending(room: &Room, id: &str) -> bool {
     room.session_account(id, None).is_some()
 }
 
@@ -1680,10 +1680,10 @@ fn running_on(room: &Room, id: &str, account: &str) -> bool {
         .is_ok_and(|session| session.account_id.as_deref() == Some(account))
 }
 
-/// What a switch kept for its sender is bound to the switched teammate's
-/// authority again once the switch is over: stopping that teammate, or
-/// changing its policy, still drops the result while it waits unheard, as
-/// it would have without the switch.
+/// What a switch lets through for its sender still holds the switched
+/// teammate's lasting authority, which the switch leaves standing: stopping
+/// that teammate after the switch, or changing its policy, still drops the
+/// result while it waits unheard, as it would have without the switch.
 #[tokio::test]
 async fn a_result_a_switch_kept_is_still_dropped_by_a_later_stop_or_policy_change() {
     for policy_change in [false, true] {
@@ -1726,25 +1726,6 @@ async fn a_result_a_switch_kept_is_still_dropped_by_a_later_stop_or_policy_chang
             "{policy_change}: the result is never heard"
         );
     }
-}
-
-/// A switch keeps only what its teammate's authority still covers: a policy
-/// change that has already closed it, and is about to revoke, is not undone.
-#[tokio::test]
-async fn a_switch_keeps_no_result_a_policy_change_has_already_revoked() {
-    let handed = handed_off("progress-switch-races-policy", "end_turn").await;
-    let room = &handed.room;
-    ada_busy(room).await;
-    handed.bob_gate.add_permits(2);
-    until("the result waits behind ada's turn", || {
-        request(room, "ada~bob", &handed.handoff).phase == Phase::Done
-    })
-    .await;
-    room.capability_epoch("bob").invalidate();
-    room.keep_finished_answers("bob");
-    room.revoke_exchanges("bob");
-    let handoff = request(room, "ada~bob", &handed.handoff);
-    assert_eq!((handoff.phase, handoff.failed), (Phase::Stopped, true));
 }
 
 /// The delegator switching as its result comes in is the same: the

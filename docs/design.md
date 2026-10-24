@@ -1192,7 +1192,14 @@ restart, so its result, reports and questions back keep flowing (decided
 2026-10-23 by the operator; before, such a request held leases scoped from
 the session, thread or firing that sent it, and any of those ending stopped
 it within a run though a restart brought it back). Its leases are each
-teammate's lasting authority, which only a stop or a policy update ends.
+teammate's lasting authority, which only a stop or a policy update ends. An
+account switch ends a request by its record, never by its leases: it
+replaces the teammate's session as a chapter turning over does and leaves
+that authority standing, so a result already given is still heard unless a
+stop or a policy change, whenever it lands, the switch's restart included,
+drops it (2026-10-24; before, the switch closed the authority and bound such
+a result to the colleague's lease meanwhile, and a stop during the restart
+was passed over).
 While it stands it is the grant for its thread's questions back
 to the delegator, which reach the delegating conversation without a card.
 Once a stop or a revocation has ended it, the thread's link says so

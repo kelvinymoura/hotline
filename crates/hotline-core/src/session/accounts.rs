@@ -6,7 +6,9 @@
 //! only when the teammate has no work in flight anywhere and the account it
 //! wants is not held, and then the old lease dies, that backend's checkpoints
 //! go, and the session is rebuilt. Until then every thread is built on the
-//! account the switch is from.
+//! account the switch is from. Unlike a policy change it leaves the
+//! teammate's lasting authority, which its requests hold, to a stop or a
+//! policy change.
 
 use super::{Room, lock, now_ms};
 use crate::accounts::login::AccountLogins;
@@ -284,17 +286,11 @@ impl Room {
         let Some((pending, backend_id)) = self.switch_to_apply(persona_id) else {
             return Ok(());
         };
-        let kept = self.keep_finished_answers(persona_id);
-        let switched = async {
-            // Before the clear: a late turn on the old lease writes no checkpoint.
-            self.invalidate(persona_id)?;
-            room::clear_backend_checkpoints(&self.log, persona_id, &backend_id)?;
-            self.switch_applied(persona_id, &pending);
-            self.reattach_held(persona_id).await
-        }
-        .await;
-        self.bind_kept_answers(persona_id, &kept);
-        switched?;
+        // Before the clear: a late turn on the old lease writes no checkpoint.
+        self.end_for_switch(persona_id)?;
+        room::clear_backend_checkpoints(&self.log, persona_id, &backend_id)?;
+        self.switch_applied(persona_id, &pending);
+        self.restart_held(persona_id).await?;
         let _ = self.info_changes.send(self.info(persona_id));
         Ok(())
     }

@@ -226,11 +226,28 @@ impl Room {
     /// caller restart it, while the inactive epoch blocks starts that race
     /// inside the wire's invalidate-to-append window.
     pub fn invalidate(&self, persona_id: &str) -> Result<(), String> {
+        self.revoke_teammate(persona_id, CapabilityEpoch::invalidate)
+    }
+
+    /// What an account switch ends of a teammate whose main conversation
+    /// runs: that session and everything the teammate runs, as a policy
+    /// change does, but not its lasting authority, since a switch changes
+    /// the account and not what the teammate may do. A result or an answer
+    /// already given, by its turns or to it, is still heard, unless a stop or
+    /// a policy change, which end that authority whenever they land, the
+    /// switch's restart included, drops it first.
+    pub(super) fn end_for_switch(&self, persona_id: &str) -> Result<(), String> {
+        self.revoke_teammate(persona_id, CapabilityEpoch::replace_session)
+    }
+
+    /// `close` is what becomes of the teammate's epoch: a policy update
+    /// quarantines it and ends its authority, a switch replaces the session.
+    fn revoke_teammate(&self, persona_id: &str, close: fn(&CapabilityEpoch)) -> Result<(), String> {
         self.settle_account_switch(&self.persona(persona_id)?);
         self.forget_informed_collaboration(persona_id);
         {
             let _lifecycle = lock(&self.lifecycle);
-            self.capability_epoch(persona_id).invalidate();
+            close(&self.capability_epoch(persona_id));
             let session = lock(&self.sessions).get(persona_id).cloned();
             if let Some(session) = &session {
                 self.revoke_session(session);
@@ -246,7 +263,8 @@ impl Room {
         Ok(())
     }
 
-    /// The caller holds the lifecycle lock and has closed the epoch. Keep
+    /// The caller holds the lifecycle lock and has ended the session's
+    /// generation. Keep
     /// the record for reattachment, but never present revoked execution as
     /// ready if persisting its replacement policy fails.
     fn revoke_session(&self, session: &Arc<Session>) {
@@ -389,13 +407,21 @@ impl Room {
         // The wire invalidates before appending. Repeating it also gives
         // direct callers the same stale-driver boundary.
         self.invalidate(persona_id)?;
+        {
+            let _lifecycle = lock(&self.lifecycle);
+            self.capability_epoch(persona_id).activate();
+            self.schedule_changed.notify_one();
+        }
+        self.restart_held(persona_id).await
+    }
+
+    /// Starts the main session a revocation ended again, on a lease of its
+    /// own, when one was running. The caller holds the start gate.
+    pub(super) async fn restart_held(self: &Arc<Self>, persona_id: &str) -> Result<(), String> {
         let capability = {
             let _lifecycle = lock(&self.lifecycle);
             let was_running = lock(&self.sessions).remove(persona_id).is_some();
-            let epoch = self.capability_epoch(persona_id);
-            epoch.activate();
-            self.schedule_changed.notify_one();
-            was_running.then(|| epoch.lease())
+            was_running.then(|| self.capability_epoch(persona_id).lease())
         };
         let Some(capability) = capability else {
             return Ok(());
