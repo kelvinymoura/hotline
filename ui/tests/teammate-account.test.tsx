@@ -502,8 +502,9 @@ describe("a Claude Code teammate's account", () => {
 
 		await click("Keep Account 1");
 		expect(calls).toContainEqual(["persona.account", { personaId: "ada", accountId: "a1" }]);
+		// The stop lets the switch apply; the main conversation, which was not running, is not started.
 		await click("Stop and switch now");
-		expect(named("session.").map(([cmd]) => cmd)).toEqual(["session.stop", "session.start"]);
+		expect(named("session.")).toEqual([["session.stop", { personaId: "ada" }]]);
 
 		// With nothing pending and no session, there is no switch to show.
 		await remount(ada, sessionOf("idle"));

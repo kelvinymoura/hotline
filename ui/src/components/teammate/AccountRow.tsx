@@ -133,10 +133,12 @@ export function AccountRow({
 		const followsDefault = hotline && choices.some((one) => one.id === accountId && one.isDefault);
 		void assign(followsDefault ? SYSTEM_DEFAULT : accountId);
 	};
+	// Once the stopped work rests the switch applies by itself; the main conversation comes back on the new account only if it was running.
+	const mainRunning = up || session.state === "starting";
 	const stopAndSwitch = () =>
 		void send(async () => {
 			await wire.command("session.stop", { personaId: persona.id });
-			await wire.command("session.start", { personaId: persona.id });
+			if (mainRunning) await wire.command("session.start", { personaId: persona.id });
 		});
 	const reload = () => wire.command("accounts.list", {}).then(setList, () => {});
 
