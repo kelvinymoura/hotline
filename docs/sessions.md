@@ -878,7 +878,9 @@ authority, which a request holds (`Room::request_lease`): with the main
 conversation down it leaves the epoch alone, and with it up it replaces the
 session (`end_for_switch`, `CapabilityEpoch::replace_session`) as a chapter
 turning over does, and starts it again on the new account
-(`restart_held`). Either way the revocation passes over such a request. A
+(`restart_held`). Either way the switch is marked applied before anything
+ends, so a thread brought up while it ends what the teammate runs is built
+on the new account, and the revocation passes over such a request. A
 stop or a policy change ends that authority whenever it lands, before the
 switch, while it restarts the session or after it, and so still drops a
 result not yet heard.
