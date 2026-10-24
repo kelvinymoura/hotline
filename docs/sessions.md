@@ -863,7 +863,9 @@ process never changes account: a switch waits until the whole teammate is
 idle, then starts it again Fresh on the new one (see [Checkpoints](#checkpoints)).
 Applying it is a policy change: idle side and call threads are archived, and
 a voice still connected to a call keeps its voice but not its tools or work,
-so the person hangs up and calls again.
+so the person hangs up and calls again. With the main conversation down, the
+switch is marked applied before its threads and jobs are let go of, so a
+thread brought up meanwhile is built on the new account.
 
 For ACP teammates, Settings → Reach shows the harness's advertised runtime
 mode and labels it **Externally managed**. The chat header shows only model

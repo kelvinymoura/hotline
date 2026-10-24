@@ -300,11 +300,13 @@ impl Room {
         let Some((pending, backend_id)) = self.switch_to_apply(persona_id) else {
             return Ok(());
         };
+        // Before anything ends, so a thread brought up meanwhile is built on
+        // the new account; one built before is archived here.
+        self.switch_applied(persona_id, &pending);
         self.drop_sides(persona_id);
         self.let_go_of_jobs(Some(persona_id));
         self.drop_peer_sessions(persona_id);
         room::clear_backend_checkpoints(&self.log, persona_id, &backend_id)?;
-        self.switch_applied(persona_id, &pending);
         let _ = self.info_changes.send(self.info(persona_id));
         Ok(())
     }
