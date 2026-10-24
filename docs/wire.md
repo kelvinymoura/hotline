@@ -348,11 +348,11 @@ call is built on until it applies. `held` says why it waits, on an
 agent account only: `not_signed_in` while the account's last recorded
 status is signed out, a check in progress
 included, `signing_in` while a sign-in for it runs. Applying it ends the
-delegations the teammate holds or received, though a result or an answer its
-turns had already finished still reaches its sender, archives its idle side
-and call threads and parks its job threads; a voice
-still connected to one of its calls loses its tools and work until it is
-called again. On Hotline Agent it rebuilds the in-process driver on the new
+delegations the teammate holds or received, though a result or an answer
+already given, by its turns or to it, still reaches its sender, archives
+its idle side and call threads and parks its job threads; a voice still
+connected to one of its calls loses its tools and work until it is called
+again. On Hotline Agent it rebuilds the in-process driver on the new
 credential, handed the conversation, and a switch still pending outlives a
 change of model. A pending switch belongs to the agent it was made on, and a
 change of agent drops it. Choosing the running account again is Keep: it

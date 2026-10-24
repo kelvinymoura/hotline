@@ -1610,10 +1610,10 @@ async fn ada_busy(room: &Arc<Room>) {
     until("ada's turn is running", || claimed(room)).await;
 }
 
-/// Bob's main conversation is up again on `account`, so a switch to it is
+/// `id`'s main conversation is up again on `account`, so a switch to it is
 /// over.
-fn bob_on(room: &Room, account: &str) -> bool {
-    room.session("bob")
+fn running_on(room: &Room, id: &str, account: &str) -> bool {
+    room.session(id)
         .is_ok_and(|session| session.account_id.as_deref() == Some(account))
 }
 
@@ -1640,7 +1640,7 @@ async fn a_result_a_switch_kept_is_still_dropped_by_a_later_stop_or_policy_chang
         until(
             "the switch is over and the result waits behind ada's turn",
             || {
-                bob_on(room, ACCOUNT_B)
+                running_on(room, "bob", ACCOUNT_B)
                     && request(room, "ada~bob", &handed.handoff).phase == Phase::Done
             },
         )
@@ -1682,6 +1682,73 @@ async fn a_switch_keeps_no_result_a_policy_change_has_already_revoked() {
     room.revoke_exchanges("bob");
     let handoff = request(room, "ada~bob", &handed.handoff);
     assert_eq!((handoff.phase, handoff.failed), (Phase::Stopped, true));
+}
+
+/// The delegator switching as its result comes in is the same: the
+/// delegation ends, the result is heard, and a stop of the delegator after
+/// the switch still drops it unheard. The pair has paused at twelve, so the
+/// result waits saved for Keep going while the switch applies.
+#[tokio::test]
+async fn a_switch_of_the_delegator_as_its_result_comes_in_lets_it_through() {
+    for (main_conversation_up, stopped_after) in
+        [(false, false), (true, false), (false, true), (true, true)]
+    {
+        let case = format!("{main_conversation_up}-{stopped_after}");
+        let log = scratch(&format!("progress-switch-delegator-result-{case}"));
+        for id in ["bob", "carol"] {
+            enrol(&log, &persona(id));
+        }
+        on_an_account(&log, "ada");
+        let handed = handed_off_in(log, "end_turn").await;
+        let room = &handed.room;
+        if main_conversation_up {
+            room.start("ada").await.unwrap();
+        }
+        {
+            let _guard = lock(&room.exchange_lock);
+            let mut pair = room.exchange_pair("ada~bob").unwrap();
+            pair.paused = true;
+            room.save_pair(&pair).unwrap();
+        }
+        handed.bob_gate.add_permits(2);
+        until("the result waits for Keep going", || {
+            request(room, "ada~bob", &handed.handoff).phase == Phase::Reply
+        })
+        .await;
+        room.assign_account("ada", Some(ACCOUNT_B.into()))
+            .await
+            .unwrap();
+        until("the switch is over", || {
+            !switch_pending(room, "ada")
+                && (!main_conversation_up || running_on(room, "ada", ACCOUNT_B))
+        })
+        .await;
+        let handoff = request(room, "ada~bob", &handed.handoff);
+        assert_eq!(
+            (handoff.phase, handoff.failed, handoff.released),
+            (Phase::Reply, false, true),
+            "{case}"
+        );
+        if stopped_after {
+            room.stop("ada").unwrap();
+            let handoff = request(room, "ada~bob", &handed.handoff);
+            assert_eq!(
+                (handoff.phase, handoff.failed),
+                (Phase::Stopped, true),
+                "{case}"
+            );
+            continue;
+        }
+        room.resume_exchange("ada", "bob").unwrap();
+        until("ada hears the result", || {
+            request(room, "ada~bob", &handed.handoff).result_consumed
+        })
+        .await;
+        let told = told_ada(room, &handed.handoff);
+        assert_eq!(told.len(), 1, "{case} {told:?}");
+        assert_eq!(told[0]["cause"]["status"], "done");
+        assert_eq!(told[0]["text"], "I asked Carol which colour.");
+    }
 }
 
 #[test]
