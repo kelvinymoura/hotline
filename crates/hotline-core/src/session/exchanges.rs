@@ -1158,6 +1158,12 @@ impl Room {
                         }
                     };
                     self.hand_over_request(key, &request, thread, false).await?;
+                } else if self.dropped_by_a_swap(&request) {
+                    // A chapter's swap took this question off its main
+                    // conversation's queue: the session that replaced it
+                    // answers it.
+                    self.hand_over_request(key, &request, None, request.about.is_some())
+                        .await?;
                 }
             }
             Phase::Waiting => {
