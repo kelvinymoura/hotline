@@ -1518,10 +1518,13 @@ handoff or a question the cut turn was answering stays at work and is
 carried to the next turn that answers no request of its own, normally the
 one the person's line starts, whose answer is its result or its answer; the
 delegation and its reports go on, and the cut turn reports "This turn was
-stopped." without a wake, as a cancelled turn does. A thread parked or
-closed before such a turn comes ends what it carried as a turn that ended
-without a result. The main conversation's Interrupt is its `session.cancel`,
-which stays a stop.
+stopped." without a wake, as a cancelled turn does. A thread parked before
+such a turn comes ends nothing: the request stays at work, begun, and the
+agent that brings the thread back carries it again (`Room::carried_into`),
+so the person's line said there, or the next turn there that answers no
+request of its own, carries it to its result. Only a thread closed first
+ends what it carried, as a turn that ended without a result. The main
+conversation's Interrupt is its `session.cancel`, which stays a stop.
 
 **The delegation** is the handoff the thread serves: the latest one into it,
 in any phase, so a thread the person continues after its result still

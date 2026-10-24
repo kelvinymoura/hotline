@@ -769,6 +769,9 @@ impl Room {
                     && saved.account_id == account_id
             })
             .map(|saved| saved.session_id);
+        // A thread parked after an interrupt comes back carrying what it was
+        // answering.
+        let carried = self.carried_into(&start.thread.key);
         let live = Arc::new(LiveSide {
             roster: Mutex::default(),
             id: start.thread.key.clone(),
@@ -793,7 +796,7 @@ impl Room {
             marking: Mutex::default(),
             stopped_by_person: AtomicBool::new(false),
             interrupted_by_person: AtomicBool::new(false),
-            carried: Mutex::new(None),
+            carried: Mutex::new(carried),
             archive_note: Mutex::new(None),
             reported: Mutex::new(None),
             saved: Mutex::new(kept),

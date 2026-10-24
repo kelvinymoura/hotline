@@ -42,9 +42,9 @@ impl Room {
     }
 
     /// A request an interrupt left for the person's next line, in a thread
-    /// let go of before that line came, has no turn to answer it: it ends as
-    /// one whose turn ended without a result. On a task of its own, since a
-    /// stop ends a thread under the exchange lock this takes.
+    /// closed before that line came, has no turn to answer it: it ends as one
+    /// whose turn ended without a result. On a task of its own, since a stop
+    /// ends a thread under the exchange lock this takes.
     fn end_unanswered(&self, request: String) {
         let Some(room) = lock(&self.me).upgrade() else {
             return;
@@ -67,8 +67,12 @@ impl Room {
         self.sides.remove(&side.id);
         let dropped: Vec<Line> = lock(&side.turns).waiting.drain(..).collect();
         self.fail_dropped_lines(&side.persona_id, dropped);
+        // A parked thread leaves it to the agent that brings the thread back
+        // (`Room::carried_into`): a park ends no request.
         let carried = lock(&side.carried).take();
-        if let Some(request) = carried {
+        if let Some(request) = carried
+            && matches!(ending, Ending::Close(..))
+        {
             self.end_unanswered(request);
         }
         side.capability.revoke();

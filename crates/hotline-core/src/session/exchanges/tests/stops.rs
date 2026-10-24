@@ -437,21 +437,29 @@ This turn was stopped."
 }
 
 /// An interrupt with nothing said leaves the handoff for the person's next
-/// line; a thread let go of before one comes ends it as one that ended
-/// without a result, never as the person's stop.
+/// line, and the thread parking before one comes ends nothing: the line,
+/// said in the parked thread, brings it back and its turn's answer is the
+/// handoff's result.
 #[tokio::test]
 async fn a_handoff_interrupted_with_nothing_said_waits_for_the_next_line() {
     let ada = Fake::new(Scripted::new(turn("heard", "Heard.", "end_turn")));
     let gate = Arc::new(Semaphore::new(0));
     let bob = Fake::new(
-        Scripted::turns(vec![
-            turn("long", "Running the long command.", "end_turn"),
-            turn("short", "Used the short one.", "end_turn"),
-        ])
-        .on_cancel(cancelled())
-        .gated(gate.clone()),
+        Scripted::new(turn("long", "Running the long command.", "end_turn"))
+            .on_cancel(cancelled())
+            .gated(gate),
     );
-    let room = room_with("interrupts-and-parks", &ada, vec![bob.clone()]);
+    // The agent that brings the parked thread back is a new one.
+    let back = Fake::new(Scripted::new(turn(
+        "short",
+        "Used the short one.",
+        "end_turn",
+    )));
+    let room = room_with(
+        "interrupts-and-parks",
+        &ada,
+        vec![bob.clone(), back.clone()],
+    );
     let handoff = send(&room, "handoff").await;
     until("bob's handoff turn is running", || bob.prompts().len() == 1).await;
     let thread = work_thread(&room, &handoff);
@@ -466,16 +474,29 @@ async fn a_handoff_interrupted_with_nothing_said_waits_for_the_next_line() {
     );
 
     room.park_side_thread(&thread).unwrap();
-    until("the handoff has ended", || {
-        request(&room, "ada~bob", &handoff).phase == Phase::Done
-    })
-    .await;
-    let ended = request(&room, "ada~bob", &handoff);
-    assert!(ended.failed);
-    assert!(
-        ended.reply.contains("inspect before retrying"),
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let parked = request(&room, "ada~bob", &handoff);
+    assert_eq!(
+        (parked.phase, parked.failed, parked.released),
+        (Phase::Running, false, false),
         "{}",
-        ended.reply
+        parked.reply
+    );
+    assert!(ada.prompts().is_empty(), "nothing woke ada");
+
+    room.prompt_side(&thread, "use the short one", None)
+        .await
+        .unwrap();
+    done(&room, &handoff).await;
+    assert!(
+        back.prompts()[0].ends_with("use the short one"),
+        "{:?}",
+        back.prompts()
+    );
+    let result = request(&room, "ada~bob", &handoff);
+    assert_eq!(
+        (result.failed, result.reply.as_str()),
+        (false, "Used the short one.")
     );
 }
 
