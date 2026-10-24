@@ -289,8 +289,6 @@ impl Occupant for LiveSide {
         } else if line.wake {
             return Begin::Skip;
         }
-        // A turn that answers no request of its own carries on one an
-        // interrupt left the thread carrying.
         if line.request.is_none()
             && let Some(carried) = room
                 .carried_into(&self.id, None)

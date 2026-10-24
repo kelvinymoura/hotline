@@ -265,9 +265,8 @@ impl Room {
     }
 
     /// The caller holds the lifecycle lock and has ended the session's
-    /// generation. Keep
-    /// the record for reattachment, but never present revoked execution as
-    /// ready if persisting its replacement policy fails.
+    /// generation. Keep the record for reattachment, but never present
+    /// revoked execution as ready if persisting its replacement policy fails.
     fn revoke_session(&self, session: &Arc<Session>) {
         lock(&session.turns).waiting.clear();
         session.driver.invalidate();
