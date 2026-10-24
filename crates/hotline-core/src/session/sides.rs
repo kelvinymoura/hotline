@@ -288,12 +288,13 @@ impl Occupant for LiveSide {
         } else if line.wake {
             return Begin::Skip;
         }
-        let carried = lock(&self.carried).take();
-        if line.request.is_none()
-            && let Some(carried) = carried
-            && room.begin_request(&carried).is_ok()
-        {
-            *lock(&self.request) = Some(carried);
+        if line.request.is_none() {
+            let carried = lock(&self.carried).take();
+            if let Some(carried) = carried
+                && room.begin_request(&carried).is_ok()
+            {
+                *lock(&self.request) = Some(carried);
+            }
         }
         self.stopped_by_person.store(false, Ordering::SeqCst);
         self.interrupted_by_person.store(false, Ordering::SeqCst);

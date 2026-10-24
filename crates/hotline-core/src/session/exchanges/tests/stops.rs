@@ -478,3 +478,54 @@ async fn a_handoff_interrupted_with_nothing_said_waits_for_the_next_line() {
         ended.reply
     );
 }
+
+/// A colleague's question that reaches the thread before the person's line
+/// is answered on its own; the interrupted handoff still waits for the turn
+/// the person's line starts, whose answer is its result.
+#[tokio::test]
+async fn an_interrupted_handoff_waits_past_a_question_answered_in_its_thread() {
+    let ada = Fake::new(Scripted::new(turn("heard", "Heard.", "end_turn")));
+    let gate = Arc::new(Semaphore::new(0));
+    let bob = Fake::new(
+        Scripted::turns(vec![
+            turn("long", "Running the long command.", "end_turn"),
+            turn("colour", "Blue.", "end_turn"),
+            turn("short", "Used the short one.", "end_turn"),
+        ])
+        .on_cancel(cancelled())
+        .gated(gate.clone()),
+    );
+    let room = room_with("interrupts-past-a-question", &ada, vec![bob.clone()]);
+    let handoff = send(&room, "handoff").await;
+    until("bob's handoff turn is running", || bob.prompts().len() == 1).await;
+    let thread = work_thread(&room, &handoff);
+    room.interrupt_side(&thread).unwrap();
+    until("the cut turn is over", || idle(&room, &thread)).await;
+
+    let sent = TeammateTools::new(&room, "ada")
+        .call(
+            "message_teammate",
+            &json!({"to":"bob","message":"Which colour?","intent":"ask","thread":handoff}),
+        )
+        .await
+        .unwrap();
+    let ask = serde_json::from_str::<serde_json::Value>(&sent).unwrap()["requestId"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    gate.add_permits(2);
+    done(&room, &ask).await;
+    assert_eq!(request(&room, "ada~bob", &ask).reply, "Blue.");
+    assert_eq!(request(&room, "ada~bob", &handoff).phase, Phase::Running);
+
+    room.prompt_side(&thread, "use the short one", None)
+        .await
+        .unwrap();
+    gate.add_permits(2);
+    done(&room, &handoff).await;
+    let result = request(&room, "ada~bob", &handoff);
+    assert_eq!(
+        (result.failed, result.reply.as_str()),
+        (false, "Used the short one.")
+    );
+}
