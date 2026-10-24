@@ -311,6 +311,8 @@ async fn the_persons_stop_on_a_handoffs_turn_ends_it_and_waits_for_the_senders_n
             .gated(gate.clone()),
     );
     let room = room_with("progress-person-stops-handoff", &ada, vec![bob.clone()]);
+    // Ada is up and idle, so a report that woke her would start a turn.
+    room.start("ada").await.unwrap();
     let handoff = send(&room, "handoff").await;
     until("bob's handoff turn is running", || bob.prompts().len() == 1).await;
     let thread = work_thread(&room, &handoff);
@@ -319,6 +321,7 @@ async fn the_persons_stop_on_a_handoffs_turn_ends_it_and_waits_for_the_senders_n
         said_in(&room, &thread).len() == 1
     })
     .await;
+    assert!(!claimed(&room), "ada is idle");
     room.cancel_side(&thread).unwrap();
     until("the thread has closed", || !room.work_is_open(&thread)).await;
 
@@ -345,8 +348,8 @@ async fn the_persons_stop_on_a_handoffs_turn_ends_it_and_waits_for_the_senders_n
         "no result is delivered for it"
     );
     assert!(ada.prompts().is_empty(), "nothing woke ada");
+    assert!(!claimed(&room), "nor is a turn of hers under way");
 
-    room.start("ada").await.unwrap();
     room.prompt("ada", "what happened?", None, None)
         .await
         .unwrap();
