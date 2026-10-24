@@ -280,6 +280,24 @@ fn account_commands_round_trip_under_their_wire_names() {
     ));
 }
 
+/// The same for the main conversation's `session.cancel`.
+#[test]
+fn a_session_cancel_is_a_stop_unless_it_says_it_interrupts() {
+    let stop = json!({"cmd":"session.cancel","params":{"personaId":"ada"}});
+    let interrupt = json!({"cmd":"session.cancel","params":{"personaId":"ada","interrupt":true}});
+    for (value, interrupts) in [(&stop, false), (&interrupt, true)] {
+        let command = serde_json::from_value::<Command>(value.clone()).unwrap();
+        assert!(
+            matches!(command, Command::SessionCancel { interrupt, .. } if interrupt == interrupts),
+            "{value}"
+        );
+        assert_eq!(&serde_json::to_value(&command).unwrap(), value);
+    }
+    assert!(Command::decl(&ts_rs::Config::default()).contains(
+        r#""cmd": "session.cancel", "params": { personaId: string, interrupt?: boolean, }"#
+    ));
+}
+
 /// An older window's cancel, which says nothing more, is the Stop it always
 /// was; the composer's Interrupt says so.
 #[test]

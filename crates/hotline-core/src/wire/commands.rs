@@ -507,9 +507,10 @@ pub(crate) async fn run(
         )
         .await
         .map_err(|error| refused_at_the_desk(log, &persona_id, error)),
-        Command::SessionCancel { persona_id } => {
-            threads::cancel(room, &ThreadId::dm(persona_id), false)
-        }
+        Command::SessionCancel {
+            persona_id,
+            interrupt,
+        } => threads::cancel(room, &ThreadId::dm(persona_id), interrupt),
         Command::ProcessStop { persona_id, id } => {
             room.process_stop(&persona_id, &id).map(|()| Value::Null)
         }
