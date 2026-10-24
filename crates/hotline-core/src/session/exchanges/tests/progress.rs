@@ -1602,6 +1602,88 @@ async fn a_switch_applied_as_a_question_is_answered_lets_the_answer_through() {
     assert_eq!(told[0]["text"], "Use the blue one.");
 }
 
+/// Ada's main conversation is up and in the person's turn, which a result
+/// handed back waits behind.
+async fn ada_busy(room: &Arc<Room>) {
+    room.start("ada").await.unwrap();
+    room.prompt("ada", "busy?", None, None).await.unwrap();
+    until("ada's turn is running", || claimed(room)).await;
+}
+
+/// Bob's main conversation is up again on `account`, so a switch to it is
+/// over.
+fn bob_on(room: &Room, account: &str) -> bool {
+    room.session("bob")
+        .is_ok_and(|session| session.account_id.as_deref() == Some(account))
+}
+
+/// What a switch kept for its sender is bound to the switched teammate's
+/// authority again once the switch is over: stopping that teammate, or
+/// changing its policy, still drops the result while it waits unheard, as
+/// it would have without the switch.
+#[tokio::test]
+async fn a_result_a_switch_kept_is_still_dropped_by_a_later_stop_or_policy_change() {
+    for policy_change in [false, true] {
+        let log = scratch(&format!("progress-switch-kept-{policy_change}"));
+        for id in ["ada", "carol"] {
+            enrol(&log, &persona(id));
+        }
+        on_an_account(&log, "bob");
+        let handed = handed_off_in(log, "end_turn").await;
+        let room = &handed.room;
+        room.start("bob").await.unwrap();
+        ada_busy(room).await;
+        room.assign_account("bob", Some(ACCOUNT_B.into()))
+            .await
+            .unwrap();
+        handed.bob_gate.add_permits(2);
+        until(
+            "the switch is over and the result waits behind ada's turn",
+            || {
+                bob_on(room, ACCOUNT_B)
+                    && request(room, "ada~bob", &handed.handoff).phase == Phase::Done
+            },
+        )
+        .await;
+        if policy_change {
+            room.reattach("bob").await.unwrap();
+        } else {
+            room.stop("bob").unwrap();
+        }
+        let handoff = request(room, "ada~bob", &handed.handoff);
+        assert_eq!(
+            (handoff.phase, handoff.failed),
+            (Phase::Stopped, true),
+            "{policy_change}"
+        );
+        handed.carol_gate.add_permits(4);
+        until("ada's turn is over", || !claimed(room)).await;
+        assert!(
+            !request(room, "ada~bob", &handed.handoff).result_consumed,
+            "{policy_change}: the result is never heard"
+        );
+    }
+}
+
+/// A switch keeps only what its teammate's authority still covers: a policy
+/// change that has already closed it, and is about to revoke, is not undone.
+#[tokio::test]
+async fn a_switch_keeps_no_result_a_policy_change_has_already_revoked() {
+    let handed = handed_off("progress-switch-races-policy", "end_turn").await;
+    let room = &handed.room;
+    ada_busy(room).await;
+    handed.bob_gate.add_permits(2);
+    until("the result waits behind ada's turn", || {
+        request(room, "ada~bob", &handed.handoff).phase == Phase::Done
+    })
+    .await;
+    room.capability_epoch("bob").invalidate();
+    room.keep_finished_answers("bob");
+    room.revoke_exchanges("bob");
+    let handoff = request(room, "ada~bob", &handed.handoff);
+    assert_eq!((handoff.phase, handoff.failed), (Phase::Stopped, true));
+}
+
 #[test]
 fn only_a_handoff_is_released_and_a_request_not_released_saves_without_it() {
     let mut handoff = saved_request("handoff", Intent::Handoff, Phase::Done);

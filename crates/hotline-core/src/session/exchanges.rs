@@ -523,69 +523,6 @@ impl Room {
         request.phase != Phase::Stopped
             && (request.phase != Phase::Done || (!request.inline && !request.result_consumed))
     }
-    pub(super) fn revoke_exchanges(&self, persona: &str) {
-        self.stop_revoked_exchanges(Some(persona));
-    }
-    /// A switch changes the account a teammate runs on, not what it may do:
-    /// what its turns already finished is its senders' to hear. Each request
-    /// it was given whose turn is over is bound to its sender's authority
-    /// alone, so the revocation the switch then makes leaves it to be heard.
-    pub(super) fn keep_finished_answers(&self, persona: &str) {
-        let _guard = lock(&self.exchange_lock);
-        let mut leases = lock(&self.exchange_leases);
-        for request in self.exchange_pairs().iter().flat_map(|pair| &pair.requests) {
-            if request.to == persona
-                && Self::turn_over(request)
-                && Self::exchange_pending(request)
-                && let Some((sender, recipient)) = leases.get_mut(&request.id)
-            {
-                *recipient = sender.clone();
-            }
-        }
-    }
-    /// Ends what `persona` holds or was given, and anything whose authority
-    /// lapsed. A request `persona` was given and has finished is left to be
-    /// heard only while the leases it holds here are current: a stop or a
-    /// policy change ends them first, a switch has bound it to its sender's
-    /// alone, and one from before a restart holds none.
-    fn stop_revoked_exchanges(&self, persona: Option<&str>) {
-        let _guard = lock(&self.exchange_lock);
-        let (mut stopped, mut ended) = (Vec::new(), Vec::new());
-        for mut pair in self.exchange_pairs() {
-            let ours = persona.is_some_and(|id| pair.a == id || pair.b == id);
-            let mut changed = false;
-            for request in &mut pair.requests {
-                if ours {
-                    changed |= progress::release(request, &mut ended);
-                }
-                let finished_under_current_authority = persona == Some(request.to.as_str())
-                    && Self::turn_over(request)
-                    && lock(&self.exchange_leases)
-                        .get(&request.id)
-                        .is_some_and(|(a, b)| a.is_current() && b.is_current());
-                if !Self::exchange_pending(request)
-                    || finished_under_current_authority
-                    || (!ours && self.exchange_lease_current(&request.id))
-                {
-                    continue;
-                }
-                request.owed_to_thread = self.owes_thread(request, persona);
-                self.cancel_handoff(request);
-                request.phase = Phase::Stopped;
-                progress::release(request, &mut ended);
-                request.failed = true;
-                request.reply = "Collaboration was revoked or a participant stopped. Send again if still needed.".into();
-                stopped.push(request.clone());
-                changed = true;
-            }
-            if changed && let Err(error) = self.save_pair(&pair) {
-                eprintln!("revoke exchange: {error}");
-            }
-            self.wake_owed(&pair);
-        }
-        self.mark_handoffs(&ended);
-        self.exchange_notices(&stopped);
-    }
     fn exchange_lease_current(&self, id: &str) -> bool {
         lock(&self.exchange_leases)
             .get(id)
@@ -1485,6 +1422,7 @@ mod gates;
 mod linked;
 mod progress;
 mod questions;
+mod revoked;
 
 #[cfg(test)]
 mod tests;
