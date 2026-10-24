@@ -1529,8 +1529,11 @@ export type SealedPairing = { payload: PairingPayload, link: string, id: string,
  */
 export type SessionAccount = { 
 /**
- * The account the live session started with. Absent is the default:
- * This computer, or on Hotline Agent its model's provider's default.
+ * The account what runs now is on: the main conversation's session,
+ * or with none up, while a switch is pending, the account its threads,
+ * jobs and calls are built on until the switch applies. Absent is the
+ * default: This computer, or on Hotline Agent its model's provider's
+ * default.
  */
 running?: string, 
 /**

@@ -494,6 +494,22 @@ describe("a Claude Code teammate's account", () => {
 		expect(row("Account 1").textContent).toContain("In use");
 	});
 
+	test("a switch only a work thread holds back is shown with the main conversation down", async () => {
+		await mount({ ...ada, accountId: "a2" }, sessionOf("idle", { running: "a1", wanted: "a2" }));
+		expect(text()).toContain("Switches to Account 2 when its work ends.");
+		expect(text()).toContain("What is running now stays on Account 1. Stop and switch now stops all of Ada's work.");
+		expect(text()).not.toContain("In use");
+
+		await click("Keep Account 1");
+		expect(calls).toContainEqual(["persona.account", { personaId: "ada", accountId: "a1" }]);
+		await click("Stop and switch now");
+		expect(named("session.").map(([cmd]) => cmd)).toEqual(["session.stop", "session.start"]);
+
+		// With nothing pending and no session, there is no switch to show.
+		await remount(ada, sessionOf("idle"));
+		expect(text()).not.toContain("Switches to");
+	});
+
 	test("a held switch keeps the current account", async () => {
 		await mount({ ...ada, accountId: "a3" }, sessionOf("ready", { running: "a1", wanted: "a3", held: "not_signed_in" }));
 		expect(text()).toContain("Account 3 is not signed in. Ada keeps Account 1 until it is.");

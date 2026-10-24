@@ -325,6 +325,29 @@ async fn a_switch_waits_for_a_thread_whose_agent_is_starting() {
     assert_eq!(agents.views().last().unwrap().account_id, Some(a));
 }
 
+/// With the main conversation down, a switch a work thread's turn holds back
+/// still says what runs now, and where it is going.
+#[tokio::test]
+async fn a_switch_held_by_a_work_thread_says_what_runs_with_no_main_conversation() {
+    let (agents, gate) = gated();
+    let (room, a, b) = on_accounts("switch-no-dm", agents.clone());
+    room.start_side("ada", "Task").await.unwrap();
+    until("the side is working", || {
+        room.sides("ada").first().is_some_and(|side| side.working)
+    })
+    .await;
+    assert_eq!(
+        room.assign_account("ada", Some(b.clone())).await.unwrap(),
+        switching(&a, &b, None)
+    );
+    assert_eq!(room.info("ada").account, Some(switching(&a, &b, None)));
+    gate.add_permits(10);
+    until("switched as the work ends", || {
+        room.sides("ada").is_empty() && room.info("ada").account.is_none()
+    })
+    .await;
+}
+
 #[tokio::test]
 async fn a_switch_waits_for_a_call_thread_mid_turn() {
     let (agents, gate) = gated();

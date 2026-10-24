@@ -228,8 +228,11 @@ pub enum AccountHold {
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "contract.ts", optional_fields)]
 pub struct SessionAccount {
-    /// The account the live session started with. Absent is the default:
-    /// This computer, or on Hotline Agent its model's provider's default.
+    /// The account what runs now is on: the main conversation's session,
+    /// or with none up, while a switch is pending, the account its threads,
+    /// jobs and calls are built on until the switch applies. Absent is the
+    /// default: This computer, or on Hotline Agent its model's provider's
+    /// default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub running: Option<String>,
     /// The account the teammate is set to: the running one, unless a switch

@@ -106,7 +106,8 @@ export function AccountRow({
 	// As the accounts they resolve to: a switch that lands where the session already runs is no switch.
 	const runningNow = inUse(choices, running);
 	const switching = inUse(choices, wanted) !== runningNow;
-	const pending = up && held === undefined && switching;
+	// Up or not: a thread, a job or a call holds a switch back as the main conversation does.
+	const pending = held === undefined && switching;
 	// A teammate whose every turn is refused runs on nothing.
 	const inUseNow = up && !stranded && !switching ? runningNow : undefined;
 	// The core refuses an account that does not fit the model, so Keep is offered only for one that does.

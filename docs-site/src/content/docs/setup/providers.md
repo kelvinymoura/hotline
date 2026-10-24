@@ -258,7 +258,9 @@ default, so it moves when the default does.
 Pick another account in the pane and the teammate moves to it when its work
 ends: no turn in its conversation, and no side thread, call, job, subagent or
 conversation with another teammate mid-turn. Until then the pane says
-**Switches to … when its work ends**, and offers:
+**Switches to … when its work ends**, and names the account the running work
+is on, even when only a side thread or a job is working and the conversation
+itself is not running. It offers:
 
 - **Keep …**: stay on the account in use, and change nothing.
 - **Stop and switch now**: stop all of the teammate's work and start it on
