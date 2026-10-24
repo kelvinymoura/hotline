@@ -263,8 +263,8 @@ is on, even when only a side thread or a job is working and the conversation
 itself is not running. It offers:
 
 - **Keep …**: stay on the account in use, and change nothing.
-- **Stop and switch now**: stop all of the teammate's work and start it on
-  the new account.
+- **Stop and switch now**: stop all of the teammate's work and switch now.
+  Its conversation starts again on the new account only if it was running.
 
 A Claude subscription that is not signed in, or still signing in, waits: the
 teammate keeps its current account until it is.

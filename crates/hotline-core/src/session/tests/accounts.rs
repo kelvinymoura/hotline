@@ -466,6 +466,31 @@ async fn stop_and_switch_now_starts_the_new_account_fresh() {
     assert_eq!(saved(&room), []);
 }
 
+/// With the main conversation down, Stop and switch now is the stop alone:
+/// the work it ends lets the switch apply, and no main conversation starts.
+#[tokio::test]
+async fn a_stop_with_the_main_conversation_down_lets_the_switch_apply() {
+    let (agents, _gate) = gated();
+    let (room, a, b) = on_accounts("switch-stop-no-dm", agents.clone());
+    both_checkpoints(&room, &a, &b);
+    room.start_side("ada", "Task").await.unwrap();
+    until("the side is working", || {
+        room.sides("ada").first().is_some_and(|side| side.working)
+    })
+    .await;
+    assert_eq!(
+        room.assign_account("ada", Some(b.clone())).await.unwrap(),
+        switching(&a, &b, None)
+    );
+    room.stop("ada").unwrap();
+    until("switched once the stopped work rests", || {
+        room.info("ada").account.is_none()
+    })
+    .await;
+    assert_eq!(saved(&room), []);
+    assert!(room.session("ada").is_err(), "no main conversation started");
+}
+
 #[tokio::test]
 async fn a_stale_lease_cannot_write_a_checkpoint_after_the_switch() {
     let agents = Fake::new(Scripted::new(Vec::new()));
