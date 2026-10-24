@@ -496,7 +496,7 @@ impl Sides {
         lock(&self.inner).live.remove(side_id);
     }
 
-    fn of(&self, persona_id: &str) -> Vec<Arc<LiveSide>> {
+    pub(super) fn of(&self, persona_id: &str) -> Vec<Arc<LiveSide>> {
         let mut sides: Vec<Arc<LiveSide>> = lock(&self.inner)
             .live
             .values()

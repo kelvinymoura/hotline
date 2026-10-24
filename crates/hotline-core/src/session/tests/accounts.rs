@@ -303,6 +303,28 @@ async fn a_switch_waits_for_a_side_thread_mid_turn() {
     until("switched", || running(&room) == Some(b.clone())).await;
 }
 
+/// A thread whose agent is starting runs no turn, and is still built on the
+/// account the switch is from: the switch waits for its start.
+#[tokio::test]
+async fn a_switch_waits_for_a_thread_whose_agent_is_starting() {
+    let starts = Arc::new(Semaphore::new(0));
+    let agents = Fake::new(Scripted::new(Vec::new()).slow_to_start(starts.clone()));
+    let (room, a, b) = on_accounts("switch-starting-side", agents.clone());
+    room.start_side("ada", "").await.unwrap();
+    room.assign_account("ada", Some(b.clone())).await.unwrap();
+    assert_eq!(room.sides("ada").len(), 1, "the switch waits for the start");
+    assert_eq!(
+        room.info("ada").account.and_then(|account| account.wanted),
+        Some(b)
+    );
+    starts.add_permits(1);
+    until("switched once the agent is up", || {
+        room.sides("ada").is_empty() && room.info("ada").account.is_none()
+    })
+    .await;
+    assert_eq!(agents.views().last().unwrap().account_id, Some(a));
+}
+
 #[tokio::test]
 async fn a_switch_waits_for_a_call_thread_mid_turn() {
     let (agents, gate) = gated();
