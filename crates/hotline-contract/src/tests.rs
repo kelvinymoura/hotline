@@ -280,6 +280,27 @@ fn account_commands_round_trip_under_their_wire_names() {
     ));
 }
 
+/// An older window's cancel, which says nothing more, is the Stop it always
+/// was; the composer's Interrupt says so.
+#[test]
+fn a_thread_cancel_is_a_stop_unless_it_says_it_interrupts() {
+    let side = json!({"kind":"side","key":"s1"});
+    let stop = json!({"cmd":"thread.cancel","params":{"thread":side}});
+    let interrupt = json!({"cmd":"thread.cancel","params":{"thread":side,"interrupt":true}});
+    for (value, interrupts) in [(&stop, false), (&interrupt, true)] {
+        let command = serde_json::from_value::<Command>(value.clone()).unwrap();
+        assert!(
+            matches!(command, Command::ThreadCancel { interrupt, .. } if interrupt == interrupts),
+            "{value}"
+        );
+        assert_eq!(&serde_json::to_value(&command).unwrap(), value);
+    }
+    assert!(
+        Command::decl(&ts_rs::Config::default())
+            .contains(r#""cmd": "thread.cancel", "params": { thread: ThreadId, "#)
+    );
+}
+
 #[test]
 fn an_agent_account_reads_back_as_written_and_its_states_are_snake_case() {
     let config = ts_rs::Config::default();

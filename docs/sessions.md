@@ -1504,6 +1504,19 @@ given in goes on. A handoff waiting on that question is carried on by the
 stop instead, as by an answer, told without "Send it again"; an asker on a
 linked desk is told by its own desk, as a sender of a handoff is.
 
+The composer's Interrupt in a work thread, and Esc there, is not that Stop:
+it is the person redirecting the turn, and it sends `thread.cancel` with
+`interrupt` (`interrupt_side`). Only the turn in flight is cut; nothing
+waiting behind it is dropped, so the person's line is heard next. A
+handoff or a question the cut turn was answering stays at work and is
+carried to the next turn that answers no request of its own, normally the
+one the person's line starts, whose answer is its result or its answer; the
+delegation and its reports go on, and the cut turn reports "This turn was
+stopped." without a wake, as a cancelled turn does. A thread parked or
+closed before such a turn comes ends what it carried as a turn that ended
+without a result. The main conversation's Interrupt is its `session.cancel`,
+which stays a stop.
+
 **The delegation** is the handoff the thread serves: the latest one into it,
 in any phase, so a thread the person continues after its result still
 reports. It stands while the request has not been stopped or released and,

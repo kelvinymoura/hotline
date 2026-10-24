@@ -1,9 +1,10 @@
 //! The person's Stop ends the colleagues' work it reaches as their decision:
 //! a handoff whose turn it cuts short or whose line it drops before that turn
 //! began, and the answer to a question whose turn it cuts short. Each sender
-//! is told once, without a wake, and the work never runs again.
+//! is told once, without a wake, and the work never runs again. Their
+//! Interrupt only cuts the turn: the work goes on in the next one.
 use super::gates::{Apart, ask_carol, idle, request, turn};
-use super::progress::{asking, claimed, heard_with, room_with, says_ended};
+use super::progress::{asking, claimed, heard_with, room_with, said_in, says_ended};
 use super::*;
 use tokio::sync::Semaphore;
 
@@ -359,4 +360,121 @@ async fn a_handoff_waiting_on_a_question_whose_answer_the_person_stopped_goes_on
     assert!(heard.contains(ANSWER_STOPPED), "{heard}");
     assert!(!heard.contains("Send it again"), "{heard}");
     assert!(asked.progress.is_empty(), "its failure told it, once");
+}
+
+/// The person interrupts Bob's handoff turn to say something instead: the
+/// line they had said is heard next, not dropped, its turn's answer is the
+/// handoff's result, and the delegation goes on. The cut turn is reported.
+#[tokio::test]
+async fn the_persons_interrupt_on_a_handoffs_turn_lets_their_line_carry_it_on() {
+    let ada = Fake::new(Scripted::new(turn("heard", "Heard.", "end_turn")));
+    let gate = Arc::new(Semaphore::new(0));
+    let bob = Fake::new(
+        Scripted::turns(vec![
+            turn("long", "Running the long command.", "end_turn"),
+            turn("short", "Used the short one.", "end_turn"),
+        ])
+        .on_cancel(cancelled())
+        .gated(gate.clone()),
+    );
+    let room = room_with("interrupts-a-handoff", &ada, vec![bob.clone()]);
+    let handoff = send(&room, "handoff").await;
+    until("bob's handoff turn is running", || bob.prompts().len() == 1).await;
+    let thread = work_thread(&room, &handoff);
+    gate.add_permits(1);
+    until("bob has said what he is doing", || {
+        said_in(&room, &thread).len() == 1
+    })
+    .await;
+    room.prompt_side(&thread, "use the short one", None)
+        .await
+        .unwrap();
+    room.interrupt_side(&thread).unwrap();
+    until("the person's line is heard", || bob.prompts().len() == 2).await;
+
+    assert!(
+        bob.prompts()[1].ends_with("use the short one"),
+        "{:?}",
+        bob.prompts()
+    );
+    let going = request(&room, "ada~bob", &handoff);
+    assert_eq!(
+        (going.phase, going.failed),
+        (Phase::Running, false),
+        "the handoff goes on"
+    );
+    assert_eq!(
+        notices(&room, "ada"),
+        [
+            "Ada, in your handoff thread “work handoff”: Running the long command.
+
+This turn was stopped."
+        ]
+    );
+    gate.add_permits(2);
+    done(&room, &handoff).await;
+    let result = request(&room, "ada~bob", &handoff);
+    assert_eq!(
+        (result.failed, result.reply.as_str(), result.released),
+        (false, "Used the short one.", false)
+    );
+    let delivered = room
+        .tape("ada")
+        .into_iter()
+        .find(|v| v["kind"] == "delivery" && v["cause"]["requestId"] == handoff.as_str())
+        .expect("the result reaches ada");
+    assert_eq!(delivered["cause"]["status"], "done");
+    assert_eq!(delivered["text"], "Used the short one.");
+    until("the result closes the thread", || {
+        !room.work_is_open(&thread)
+    })
+    .await;
+    assert_eq!(
+        room.link_of(&ThreadId::side(&thread)).unwrap().state,
+        crate::thread::ThreadState::Closed(crate::contract::End::Agent)
+    );
+    assert_eq!(says_ended(&room, &thread), [false; 3]);
+}
+
+/// An interrupt with nothing said leaves the handoff for the person's next
+/// line; a thread let go of before one comes ends it as one that ended
+/// without a result, never as the person's stop.
+#[tokio::test]
+async fn a_handoff_interrupted_with_nothing_said_waits_for_the_next_line() {
+    let ada = Fake::new(Scripted::new(turn("heard", "Heard.", "end_turn")));
+    let gate = Arc::new(Semaphore::new(0));
+    let bob = Fake::new(
+        Scripted::turns(vec![
+            turn("long", "Running the long command.", "end_turn"),
+            turn("short", "Used the short one.", "end_turn"),
+        ])
+        .on_cancel(cancelled())
+        .gated(gate.clone()),
+    );
+    let room = room_with("interrupts-and-parks", &ada, vec![bob.clone()]);
+    let handoff = send(&room, "handoff").await;
+    until("bob's handoff turn is running", || bob.prompts().len() == 1).await;
+    let thread = work_thread(&room, &handoff);
+    room.interrupt_side(&thread).unwrap();
+    until("the cut turn is over", || idle(&room, &thread)).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(request(&room, "ada~bob", &handoff).phase, Phase::Running);
+    assert_eq!(
+        bob.prompts().len(),
+        1,
+        "nothing runs until the person speaks"
+    );
+
+    room.park_side_thread(&thread).unwrap();
+    until("the handoff has ended", || {
+        request(&room, "ada~bob", &handoff).phase == Phase::Done
+    })
+    .await;
+    let ended = request(&room, "ada~bob", &handoff);
+    assert!(ended.failed);
+    assert!(
+        ended.reply.contains("inspect before retrying"),
+        "{}",
+        ended.reply
+    );
 }

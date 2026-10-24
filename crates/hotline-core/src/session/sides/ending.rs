@@ -41,6 +41,20 @@ impl Room {
         }
     }
 
+    /// A request an interrupt left for the person's next line, in a thread
+    /// let go of before that line came, has no turn to answer it: it ends as
+    /// one whose turn ended without a result. On a task of its own, since a
+    /// stop ends a thread under the exchange lock this takes.
+    fn end_unanswered(&self, request: String) {
+        let Some(room) = lock(&self.me).upgrade() else {
+            return;
+        };
+        tokio::spawn(async move {
+            let reply = room.ended_without_result(&request).to_string();
+            room.finish_request(&request, reply, true);
+        });
+    }
+
     /// Lets go of a thread's agent and leaves the thread open.
     pub(super) fn park_side(&self, side: &Arc<LiveSide>) {
         self.end_side(side, Ending::Park);
@@ -53,6 +67,10 @@ impl Room {
         self.sides.remove(&side.id);
         let dropped: Vec<Line> = lock(&side.turns).waiting.drain(..).collect();
         self.fail_dropped_lines(&side.persona_id, dropped);
+        let carried = lock(&side.carried).take();
+        if let Some(request) = carried {
+            self.end_unanswered(request);
+        }
         side.capability.revoke();
         // A thread ended while its agent is still starting has none to stop
         // here: the start sees that it is closed and stops it itself.

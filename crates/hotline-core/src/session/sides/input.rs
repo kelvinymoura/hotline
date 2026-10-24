@@ -144,6 +144,20 @@ impl Room {
             .map(str::to_string)
     }
 
+    /// Cuts the turn in flight in a side thread for the person to say
+    /// something instead, as the composer's Interrupt does: what waited
+    /// behind it is heard next, and a colleague's handoff or question the
+    /// turn was answering goes on in the turn the person's next line starts.
+    /// Only their Stop ends that work.
+    pub fn interrupt_side(&self, side_id: &str) -> Result<(), String> {
+        let side = self.live_side(side_id)?;
+        side.interrupted_by_person.store(true, Ordering::SeqCst);
+        if let Some(driver) = side.driver() {
+            driver.cancel();
+        }
+        Ok(())
+    }
+
     /// Stops the turn in flight in a side thread and drops what waited behind
     /// it: a colleague's question fails to its asker, and a colleague's
     /// handoff ends as the person's stop of it. The thread stays live, unless
