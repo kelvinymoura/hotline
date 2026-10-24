@@ -550,3 +550,123 @@ async fn an_interrupted_handoff_waits_past_a_question_answered_in_its_thread() {
         (false, "Used the short one.")
     );
 }
+
+/// Ada's question into the thread `handoff` opened, sent with her tools.
+async fn ask_into(room: &Arc<Room>, handoff: &str) -> String {
+    let sent = TeammateTools::new(room, "ada")
+        .call(
+            "message_teammate",
+            &json!({"to":"bob","message":"Which colour?","intent":"ask","thread":handoff}),
+        )
+        .await
+        .unwrap();
+    serde_json::from_str::<serde_json::Value>(&sent).unwrap()["requestId"]
+        .as_str()
+        .unwrap()
+        .to_string()
+}
+
+/// A second Interrupt, on the turn answering Ada's question in the thread,
+/// keeps the handoff the first one cut: the person's next line carries the
+/// handoff to its result, and the line after it answers the question.
+#[tokio::test]
+async fn a_second_interrupt_keeps_the_first_and_each_next_line_carries_one_on() {
+    let ada = Fake::new(Scripted::new(turn("heard", "Heard.", "end_turn")));
+    let gate = Arc::new(Semaphore::new(0));
+    let bob = Fake::new(
+        Scripted::turns(vec![
+            turn("long", "Running the long command.", "end_turn"),
+            turn("colour", "Looking at the colours.", "end_turn"),
+            turn("short", "Used the short one.", "end_turn"),
+            turn("blue", "Blue.", "end_turn"),
+        ])
+        .on_cancel(cancelled())
+        .gated(gate.clone()),
+    );
+    let room = room_with("interrupts-twice", &ada, vec![bob.clone()]);
+    let handoff = send(&room, "handoff").await;
+    until("bob's handoff turn is running", || bob.prompts().len() == 1).await;
+    let thread = work_thread(&room, &handoff);
+    room.interrupt_side(&thread).unwrap();
+    until("the handoff's cut turn is over", || idle(&room, &thread)).await;
+    let ask = ask_into(&room, &handoff).await;
+    until("the question's turn is running", || {
+        bob.prompts().len() == 2
+    })
+    .await;
+    room.interrupt_side(&thread).unwrap();
+    until("the question's cut turn is over", || {
+        idle(&room, &thread) && bob.prompts().len() == 2
+    })
+    .await;
+    for id in [&handoff, &ask] {
+        assert_eq!(request(&room, "ada~bob", id).phase, Phase::Running);
+    }
+
+    room.prompt_side(&thread, "use the short one", None)
+        .await
+        .unwrap();
+    gate.add_permits(2);
+    done(&room, &handoff).await;
+    assert_eq!(
+        request(&room, "ada~bob", &handoff).reply,
+        "Used the short one."
+    );
+    assert!(room.work_is_open(&thread), "the question is still carried");
+    room.prompt_side(&thread, "blue", None).await.unwrap();
+    gate.add_permits(2);
+    done(&room, &ask).await;
+    let answer = request(&room, "ada~bob", &ask);
+    assert_eq!((answer.failed, answer.reply.as_str()), (false, "Blue."));
+}
+
+/// The person's Stop on the turn answering Ada's question in the thread
+/// ends that answer, and the handoff an earlier Interrupt left the thread
+/// carrying as well: each is told once, nothing wakes Ada, and neither runs
+/// again.
+#[tokio::test]
+async fn the_persons_stop_ends_what_an_interrupt_left_its_thread_carrying() {
+    let ada = Fake::new(Scripted::new(turn("heard", "Heard.", "end_turn")));
+    let gate = Arc::new(Semaphore::new(0));
+    let bob = Fake::new(
+        Scripted::turns(vec![
+            turn("long", "Running the long command.", "end_turn"),
+            turn("colour", "Looking at the colours.", "end_turn"),
+        ])
+        .on_cancel(cancelled())
+        .gated(gate.clone()),
+    );
+    let room = room_with("stops-what-is-carried", &ada, vec![bob.clone()]);
+    room.start("ada").await.unwrap();
+    let handoff = send(&room, "handoff").await;
+    until("bob's handoff turn is running", || bob.prompts().len() == 1).await;
+    let thread = work_thread(&room, &handoff);
+    room.interrupt_side(&thread).unwrap();
+    until("the handoff's cut turn is over", || idle(&room, &thread)).await;
+    let ask = ask_into(&room, &handoff).await;
+    until("the question's turn is running", || {
+        bob.prompts().len() == 2
+    })
+    .await;
+    room.cancel_side(&thread).unwrap();
+    until("the question's turn is over", || {
+        request(&room, "ada~bob", &ask).phase != Phase::Running && idle(&room, &thread)
+    })
+    .await;
+
+    stopped_for_the_person(&room, &ask, ANSWER_STOPPED);
+    stopped_for_the_person(&room, &handoff, HANDOFF_STOPPED);
+    let told = notices(&room, "ada");
+    for said in [
+        format!("Ada, in your handoff thread “work handoff”: {HANDOFF_STOPPED}"),
+        format!("Ada, answering “Which colour?”: {ANSWER_STOPPED}"),
+    ] {
+        assert_eq!(told.iter().filter(|t| **t == said).count(), 1, "{told:?}");
+    }
+    assert_eq!(says_ended(&room, &thread), [true; 3]);
+    room.park_side_thread(&thread).unwrap();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(bob.prompts().len(), 2, "the stopped work never runs");
+    assert!(ada.prompts().is_empty(), "nothing woke ada");
+    assert!(nothing_delivered(&room, &handoff) && nothing_delivered(&room, &ask));
+}

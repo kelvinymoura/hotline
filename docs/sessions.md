@@ -1495,7 +1495,7 @@ cancelled any other way, or failed, returns its failure as before. Their
 Stop also drops what waited behind the turn, and a handoff whose line was
 among it (one that waited for the thread's agent to start, or behind the
 person's own turn) ends the same way, with the sentence alone as its report
-(`end_dropped_handoffs`): it is never handed over again when the thread
+(`end_for_the_persons_stop`): it is never handed over again when the thread
 later parks or closes, and the thread, which goes on, says on its link that
 the delegation has ended.
 
@@ -1516,16 +1516,22 @@ The composer's Interrupt in a work thread, and Esc there, is not that Stop:
 it is the person redirecting the turn, and it sends `thread.cancel` with
 `interrupt` (`interrupt_side`). Only the turn in flight is cut; nothing
 waiting behind it is dropped, so the person's line is heard next. A
-handoff or a question the cut turn was answering stays at work and is
-carried to the next turn that answers no request of its own, normally the
-one the person's line starts, whose answer is its result or its answer; the
-delegation and its reports go on, and the cut turn reports "This turn was
-stopped." without a wake, as a cancelled turn does. A thread parked before
-such a turn comes ends nothing: the request stays at work, begun, and the
-agent that brings the thread back carries it again (`Room::carried_into`),
-so the person's line said there, or the next turn there that answers no
-request of its own, carries it to its result. Only a thread closed first
-ends what it carried, as a turn that ended without a result. The main
+handoff or a question the cut turn was answering stays at work, running and
+begun on its record with no turn on it, which is all that says the thread
+carries it (`Room::carried_into`): the next turn that answers no request of
+its own, normally the one the person's line starts, takes it up, and its
+answer is its result or its answer; the delegation and its reports go on,
+and the cut turn reports "This turn was stopped." without a wake, as a
+cancelled turn does. A second Interrupt, of a turn answering another
+request there, keeps the first: the thread carries both, and each such turn
+takes the oldest, so a handoff's result does not close the thread while it
+still carries another. A thread parked before such a turn comes ends
+nothing: the record still says what it carries, so the person's line said
+there, or the next turn there that answers no request of its own, carries
+it to its result. The person's Stop ends every request the thread carries
+as their stop of it, with the sentence alone as its report
+(`end_for_the_persons_stop`), as it ends the turn it cuts; a thread closed
+first ends each as a turn that ended without a result. The main
 conversation's Interrupt is its `session.cancel`, which stays a stop.
 
 **The delegation** is the handoff the thread serves: the latest one into it,

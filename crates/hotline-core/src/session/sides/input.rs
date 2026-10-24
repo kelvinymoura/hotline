@@ -160,8 +160,9 @@ impl Room {
 
     /// Stops the turn in flight in a side thread and drops what waited behind
     /// it: a colleague's question fails to its asker, and a colleague's
-    /// handoff ends as the person's stop of it. The thread stays live, unless
-    /// the turn was a handoff's: the person's stop ends the handoff.
+    /// handoff ends as the person's stop of it, as does every request an
+    /// interrupt left the thread carrying. The thread stays live, unless the
+    /// turn was a handoff's: the person's stop ends the handoff.
     pub fn cancel_side(self: &Arc<Self>, side_id: &str) -> Result<(), String> {
         let side = self.live_side(side_id)?;
         side.stopped_by_person.store(true, Ordering::SeqCst);
@@ -174,7 +175,8 @@ impl Room {
             .filter_map(|line| line.request.as_ref())
             .map(|line| line.request.as_str())
             .collect();
-        self.end_dropped_handoffs(side_id, &requests);
+        let carried = self.carried_into(side_id, side.request().as_deref());
+        self.end_for_the_persons_stop(side_id, &requests, &carried);
         self.fail_dropped_questions(&side.persona_id, requests);
         Ok(())
     }

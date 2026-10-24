@@ -41,17 +41,19 @@ impl Room {
         }
     }
 
-    /// A request an interrupt left for the person's next line, in a thread
-    /// closed before that line came, has no turn to answer it: it ends as one
-    /// whose turn ended without a result. On a task of its own, since a stop
-    /// ends a thread under the exchange lock this takes.
-    fn end_unanswered(&self, request: String) {
+    /// The requests an interrupt left for the person's next line, in a
+    /// thread closed before that line came, have no turn to answer them:
+    /// each ends as one whose turn ended without a result. On a task of its
+    /// own, since a stop ends a thread under the exchange lock this takes.
+    fn end_unanswered(&self, requests: Vec<String>) {
         let Some(room) = lock(&self.me).upgrade() else {
             return;
         };
         tokio::spawn(async move {
-            let reply = room.ended_without_result(&request).to_string();
-            room.finish_request(&request, reply, true);
+            for request in requests {
+                let reply = room.ended_without_result(&request).to_string();
+                room.finish_request(&request, reply, true);
+            }
         });
     }
 
@@ -67,13 +69,14 @@ impl Room {
         self.sides.remove(&side.id);
         let dropped: Vec<Line> = lock(&side.turns).waiting.drain(..).collect();
         self.fail_dropped_lines(&side.persona_id, dropped);
-        // A parked thread leaves it to the agent that brings the thread back
-        // (`Room::carried_into`): a park ends no request.
-        let carried = lock(&side.carried).take();
-        if let Some(request) = carried
-            && matches!(ending, Ending::Close(..))
-        {
-            self.end_unanswered(request);
+        // A parked thread leaves what it carries to the agent that brings it
+        // back (`Room::carried_into`): a park ends no request.
+        if matches!(ending, Ending::Close(..)) {
+            let in_flight = side.request();
+            let carried = self.carried_into(&side.id, in_flight.as_deref());
+            if !carried.is_empty() {
+                self.end_unanswered(carried);
+            }
         }
         side.capability.revoke();
         // A thread ended while its agent is still starting has none to stop

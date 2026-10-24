@@ -132,9 +132,6 @@ pub(super) struct LiveSide {
     stopped_by_person: AtomicBool,
     /// The person interrupted the turn in flight to say something instead.
     interrupted_by_person: AtomicBool,
-    /// The request a turn the person interrupted was answering: the next
-    /// turn that answers none of its own answers it.
-    carried: Mutex<Option<String>>,
     /// What `archive_thread` said, held until the turn it was said in ends.
     archive_note: Mutex<Option<String>>,
     /// The agent's own id for this conversation, as the driver reports it.
@@ -292,13 +289,15 @@ impl Occupant for LiveSide {
         } else if line.wake {
             return Begin::Skip;
         }
-        if line.request.is_none() {
-            let carried = lock(&self.carried).take();
-            if let Some(carried) = carried
-                && room.begin_request(&carried).is_ok()
-            {
-                *lock(&self.request) = Some(carried);
-            }
+        // A turn that answers no request of its own carries on one an
+        // interrupt left the thread carrying.
+        if line.request.is_none()
+            && let Some(carried) = room
+                .carried_into(&self.id, None)
+                .into_iter()
+                .find(|carried| room.begin_request(carried).is_ok())
+        {
+            *lock(&self.request) = Some(carried);
         }
         self.stopped_by_person.store(false, Ordering::SeqCst);
         self.interrupted_by_person.store(false, Ordering::SeqCst);
@@ -394,8 +393,8 @@ impl Occupant for LiveSide {
             };
             if stopped.is_none() && interrupted {
                 // Cut for the person to say something: what the turn was
-                // doing goes on in the turn their line starts.
-                *lock(&side.carried) = Some(request);
+                // doing stays running on its record, held by no turn, and
+                // goes on in the turn their line starts.
                 room.report_turn(&side.id, side.opener.as_ref(), None, &driven);
                 return Then::Next;
             }
@@ -403,9 +402,10 @@ impl Occupant for LiveSide {
             let answered = Some((request.as_str(), finished));
             room.report_turn(&side.id, side.opener.as_ref(), answered, &driven);
             // Answering an ask never closes the thread: only a handoff's
-            // result does.
+            // result does, and not while something else waits in it.
             if matches!(finished, Finished::Result | Finished::Gone)
                 && lock(&side.turns).waiting.is_empty()
+                && room.carried_into(&side.id, None).is_empty()
             {
                 let by = match (stopped.is_some(), failed) {
                     (true, _) => End::Stopped,
@@ -769,9 +769,6 @@ impl Room {
                     && saved.account_id == account_id
             })
             .map(|saved| saved.session_id);
-        // A thread parked after an interrupt comes back carrying what it was
-        // answering.
-        let carried = self.carried_into(&start.thread.key);
         let live = Arc::new(LiveSide {
             roster: Mutex::default(),
             id: start.thread.key.clone(),
@@ -796,7 +793,6 @@ impl Room {
             marking: Mutex::default(),
             stopped_by_person: AtomicBool::new(false),
             interrupted_by_person: AtomicBool::new(false),
-            carried: Mutex::new(carried),
             archive_note: Mutex::new(None),
             reported: Mutex::new(None),
             saved: Mutex::new(kept),

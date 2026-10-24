@@ -617,18 +617,25 @@ impl Room {
         }
         Err("This handoff was stopped before its turn.".into())
     }
-    /// The request an interrupt left a thread carrying when the thread was
-    /// parked before a turn took it up: begun and still running in it, with
-    /// no turn on it, since the thread being brought back has no agent. Its
-    /// next turn without a request of its own answers it.
-    pub(super) fn carried_into(&self, side_id: &str) -> Option<String> {
+    /// The requests an interrupt left a thread carrying, oldest first: begun
+    /// and still running in it, and not `answering`, the one its turn in
+    /// flight holds. Within a run only an interrupt leaves a request so,
+    /// since every other end of its turn finishes or stops it, and a restart
+    /// settles it first; so the record alone says what a thread carries, a
+    /// parked one's included. Its next turns without a request of their own
+    /// answer them, one each.
+    pub(super) fn carried_into(&self, side_id: &str, answering: Option<&str>) -> Vec<String> {
         self.exchange_pairs()
             .into_iter()
             .flat_map(|pair| pair.requests)
-            .find(|r| {
-                r.phase == Phase::Running && r.started && r.thread.as_deref() == Some(side_id)
+            .filter(|r| {
+                r.phase == Phase::Running
+                    && r.started
+                    && r.thread.as_deref() == Some(side_id)
+                    && answering != Some(r.id.as_str())
             })
             .map(|r| r.id)
+            .collect()
     }
     /// Saves what a request's turn came to. `Answer` for an ask, whose reply
     /// the pair's thread keeps too. `Waiting` when a handoff's turn stopped to
