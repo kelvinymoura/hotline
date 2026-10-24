@@ -875,7 +875,10 @@ model, the mode and the effort the person picked are kept on the persona
 and asked for again as each session starts (`adopt_disposition`): the effort
 after the model, which can change the efforts on offer, and only on the
 option the harness reports in the effort category while it still lists that
-value. One it no longer lists leaves the harness's default. Without
+value. One it no longer lists leaves the harness's default. A stored effort
+belongs to the agent it was picked on, Hotline Agent included: a change of
+`backendId` clears it, unless the same update names one, so no harness is
+asked for a value picked on another. Without
 an advertised runtime selector, Reach reports that it is unavailable.
 Harness notifications refresh these controls even between turns, including
 removing choices the harness withdraws. These updates change the live

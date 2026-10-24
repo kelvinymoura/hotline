@@ -382,6 +382,47 @@ async fn an_effort_picked_for_an_acp_teammate_is_kept_and_nothing_else_is() {
     }
 }
 
+/// An effort kept for a teammate belongs to the agent it was picked on:
+/// changing its agent leaves the new one on its own default, unless the same
+/// patch names an effort, and a patch that keeps the agent keeps the effort.
+#[tokio::test]
+async fn a_change_of_agent_clears_the_effort_kept_for_the_one_before() {
+    let (_root, log, port) = door("effort-cleared-with-agent");
+    let mut socket = desk(port).await;
+    let id = create(&mut socket, 1, "Ada").await["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let effort = |log: &Log| {
+        room::roster(log)
+            .into_iter()
+            .find(|persona| persona.id == id)
+            .unwrap()
+            .effort_id
+    };
+    let steps = [
+        (json!({ "effortId": "high" }), Some("high")),
+        (json!({ "name": "Ada Lovelace" }), Some("high")),
+        (json!({ "backendId": "hotline" }), Some("high")),
+        (json!({ "backendId": "cursor" }), None),
+        (json!({ "effortId": "max" }), Some("max")),
+        (json!({ "backendId": "claude-acp" }), None),
+        (
+            json!({ "backendId": "cursor", "effortId": "low" }),
+            Some("low"),
+        ),
+    ];
+    for (n, (patch, kept)) in (2..).zip(steps) {
+        ask(
+            &mut socket,
+            json!({ "id": n, "cmd": "persona.update", "params": { "id": id, "patch": patch } }),
+        )
+        .await;
+        assert_eq!(answered(&mut socket, n).await["ok"], true, "{patch}");
+        assert_eq!(effort(&log).as_deref(), kept, "{patch}");
+    }
+}
+
 #[tokio::test]
 async fn persona_create_fills_model_id_from_the_room_default() {
     let (_root, _log, port) = door("create-default-model");

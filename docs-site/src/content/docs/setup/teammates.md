@@ -49,7 +49,9 @@ Claude login. To give Claude Code teammates different Claude logins, see
 The conversation's header shows the model and effort the tool advertises.
 The model and effort you pick there are kept, and the teammate starts on them
 again after a restart, as long as the tool still offers them; if it no longer
-offers that effort, the teammate runs at the tool's own default.
+offers that effort, the teammate runs at the tool's own default. Moving the
+teammate to another tool, or to Hotline Agent, starts it at the new one's
+default effort.
 In the teammate's pane, **Permissions** says **Managed by** the tool and
 offers the modes it advertises; Hotline passes them on rather than inventing
 its own. File reads and writes the tool asks Hotline to do stay inside the
