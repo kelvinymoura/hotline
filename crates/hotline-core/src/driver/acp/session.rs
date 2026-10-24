@@ -549,7 +549,7 @@ impl ChildAgent {
         session.info.configs = disposition.configs;
     }
 
-    /// Puts the teammate's own model and mode back on.
+    /// Puts the teammate's own model, mode and effort back on.
     ///
     /// These are session-scoped for every agent Hotline drives, so a teammate that
     /// is not asked again arrives on whatever the harness defaults to — which
@@ -575,6 +575,25 @@ impl ChildAgent {
         }
         if let Some(model) = model {
             let _ = self.set_model(&model).await;
+        }
+        // Read after the model, which can change the efforts on offer. The
+        // stored value goes only on the harness's own effort option, and
+        // only while it still lists that value; otherwise its default stands.
+        let Some(effort) = persona.effort_id.as_deref() else {
+            return;
+        };
+        let option = lock(&self.live.session)
+            .info
+            .configs
+            .iter()
+            .find(|config| {
+                config.category == Some(crate::contract::SessionConfigCategory::Effort)
+                    && config.options.iter().any(|choice| choice.id == effort)
+            })
+            .filter(|config| config.current_id.as_deref() != Some(effort))
+            .map(|config| config.id.clone());
+        if let Some(option) = option {
+            let _ = self.set_config(&option, effort).await;
         }
     }
 

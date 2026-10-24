@@ -1021,9 +1021,12 @@ reach?: Reach,
  */
 folders?: Array<FolderGrant>, modelId?: string, modeId?: string, 
 /**
- * The effort a Hotline Agent teammate runs at, when its model offers one.
- * Absent means the model's default. An ACP teammate does not store this:
- * the harness owns its config ids.
+ * The effort the teammate runs at. On Hotline Agent, one its model
+ * offers. On an ACP harness, the value of the harness's own effort
+ * option as the person last picked it, asked for again when the next
+ * session starts while the harness still offers it: the harness owns
+ * its ids, and one it no longer offers leaves its default. Absent means
+ * the default.
  */
 effortId?: string, 
 /**

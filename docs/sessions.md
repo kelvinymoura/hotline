@@ -869,7 +869,13 @@ For ACP teammates, Settings → Reach shows the harness's advertised runtime
 mode and labels it **Externally managed**. The chat header shows only model
 and reasoning effort when the harness advertises them. Other ACP settings
 are hidden. Hotline sends the actual mode and configuration ids supplied by
-the harness; it does not invent a shared set of permission levels. Without
+the harness; it does not invent a shared set of permission levels. The
+model, the mode and the effort the person picked are kept on the persona
+(`modelId`, `modeId`, `effortId`, the effort as the value the harness named)
+and asked for again as each session starts (`adopt_disposition`): the effort
+after the model, which can change the efforts on offer, and only on the
+option the harness reports in the effort category while it still lists that
+value. One it no longer lists leaves the harness's default. Without
 an advertised runtime selector, Reach reports that it is unavailable.
 Harness notifications refresh these controls even between turns, including
 removing choices the harness withdraws. These updates change the live
