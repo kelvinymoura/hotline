@@ -295,19 +295,21 @@ impl Room {
         sent_from: &ThreadId,
     ) -> Result<peers::Sent, String> {
         let _working = self.working()?;
-        if let Some(capability) = &capability {
-            capability.check()?;
-        }
         let intent = outgoing.intent;
         let (caller, target, message) = self.checked(from, outgoing.to, outgoing.message)?;
         let key = thread_key(&caller.id, &target.id).ok_or("Invalid teammate pair")?;
         let id = new_id();
+        // The request holds each teammate's lasting authority, not the
+        // conversation's it was sent from, so the chapter, thread or firing
+        // that sent it may end before it does. Taken before the sender's own
+        // lease is checked: one still current now was current as it was taken.
         let leases = (
-            capability
-                .unwrap_or_else(|| self.capability_lease(&caller.id))
-                .scoped(),
-            self.capability_lease(&target.id).scoped(),
+            self.request_lease(&caller.id),
+            self.request_lease(&target.id),
         );
+        if let Some(capability) = &capability {
+            capability.check()?;
+        }
         let continues = {
             let _guard = lock(&self.exchange_lock);
             let mut pair = self.exchange_pair(&key).unwrap_or(Pair {
@@ -802,8 +804,8 @@ impl Room {
             .entry(id.into())
             .or_insert_with(|| {
                 (
-                    self.capability_lease(&caller.id).scoped(),
-                    self.capability_lease(&target.id).scoped(),
+                    self.request_lease(&caller.id),
+                    self.request_lease(&target.id),
                 )
             })
             .clone();
@@ -1048,8 +1050,8 @@ impl Room {
                     .entry(request.id.clone())
                     .or_insert_with(|| {
                         (
-                            self.capability_lease(&caller.id),
-                            self.capability_lease(&target.id),
+                            self.request_lease(&caller.id),
+                            self.request_lease(&target.id),
                         )
                     })
                     .clone();

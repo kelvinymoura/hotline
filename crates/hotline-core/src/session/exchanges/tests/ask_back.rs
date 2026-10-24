@@ -1069,8 +1069,8 @@ async fn a_question_not_asked_back_meets_the_ordinary_grant() {
     }
 }
 
-/// A delegation whose leases ended, though the person never stopped it,
-/// grants nothing: the question back meets the ordinary grant.
+/// A delegation whose leases ended, as a revocation's do before its record
+/// says so, grants nothing: the question back meets the ordinary grant.
 #[tokio::test]
 async fn a_question_back_whose_delegation_lapsed_by_lease_meets_the_ordinary_grant() {
     let (room, agents) = setup("ask-back-lease-lapsed");

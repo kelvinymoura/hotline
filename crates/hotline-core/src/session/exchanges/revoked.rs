@@ -62,17 +62,20 @@ impl Room {
                 } else {
                     sender
                 };
-                *its = self.capability_lease(persona).scoped();
+                *its = self.request_lease(persona);
             }
         }
     }
 
-    /// Ends what `persona` holds or was given, and anything whose authority
-    /// lapsed. A request of `persona`'s, sent or given, whose turn is over is
-    /// left to be heard only while the leases it holds here are current: a
-    /// stop or a policy change ends them first, a switch leaves them so (or
-    /// binds them to the colleague's for as long as it closes the teammate's
-    /// authority), and one from before a restart holds none.
+    /// Ends what `persona` holds or was given, and anything whose leases have
+    /// ended, which only a stop or a policy change on either teammate does
+    /// (see [`Room::request_lease`]): the sweep finds a request whose
+    /// revocation it did not see. A request of `persona`'s, sent or given,
+    /// whose turn is over is left to be heard only while the leases it holds
+    /// here are current: a stop or a policy change ends them first, a switch
+    /// leaves them so (or binds them to the colleague's for as long as it
+    /// closes the teammate's authority), and one from before a restart holds
+    /// none.
     pub(super) fn stop_revoked_exchanges(&self, persona: Option<&str>) {
         let _guard = lock(&self.exchange_lock);
         let (mut stopped, mut ended) = (Vec::new(), Vec::new());
