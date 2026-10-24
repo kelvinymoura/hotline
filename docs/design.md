@@ -1199,7 +1199,15 @@ that authority standing, so a result already given is still heard unless a
 stop or a policy change, whenever it lands, the switch's restart included,
 drops it (2026-10-24; before, the switch closed the authority and bound such
 a result to the colleague's lease meanwhile, and a stop during the restart
-was passed over).
+was passed over). What changes a teammate's session and not what it may do
+rebuilds its main session the same way (`Room::rebuild`) and ends nothing
+it holds or was given: its computer joining once downloaded or made again
+between turns, and a sign-in to an MCP server completing, which adds reach
+its policy already granted (decided 2026-10-24 by the coordinating session;
+before, each went through the policy change's revocation and archived the
+teammate's threads, or every teammate's, with every request and delegation
+in them). A sign-out, a server removed and a policy change narrow reach and
+still revoke.
 While it stands it is the grant for its thread's questions back
 to the delegator, which reach the delegating conversation without a card.
 Once a stop or a revocation has ended it, the thread's link says so
