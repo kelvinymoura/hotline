@@ -232,6 +232,7 @@ impl Occupant for Session {
         room.set_state(self, SessionState::Ready);
         room.attach_computer_when_idle(&self.persona_id);
         room.swap_computer_when_idle(&self.persona_id);
+        room.rebuild_for_sign_in_when_idle(self);
         room.apply_account_when_idle(&self.persona_id);
     }
 }

@@ -282,6 +282,27 @@ async fn a_switch_during_a_dm_turn_waits_for_the_turn_and_then_applies() {
     assert_eq!(agents.views().last().unwrap().account_id, Some(b));
 }
 
+/// An MCP sign-in during the turn a switch waits for rebuilds nothing before
+/// that turn is over, so the switch still waits for it, and one start then
+/// serves them both.
+#[tokio::test]
+async fn an_mcp_sign_in_mid_turn_leaves_the_switch_waiting_for_that_turn() {
+    let (agents, gate) = gated();
+    let (room, a, b) = on_accounts("switch-dm-turn-mcp-sign-in", agents.clone());
+    started(&room).await;
+    mid_turn(&room).await;
+    room.assign_account("ada", Some(b.clone())).await.unwrap();
+    room.signed_in_to_mcp().await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert_eq!(room.info("ada").account, Some(switching(&a, &b, None)));
+    assert_eq!(room.info("ada").state, SessionState::Thinking);
+    assert_eq!(agents.views().len(), 1);
+    gate.add_permits(10);
+    until("switched", || running(&room) == Some(b.clone())).await;
+    assert_eq!(agents.views().len(), 2);
+    assert_eq!(agents.views().last().unwrap().account_id, Some(b));
+}
+
 #[tokio::test]
 async fn a_switch_waits_for_a_side_thread_mid_turn() {
     let (agents, gate) = gated();
