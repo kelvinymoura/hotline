@@ -109,7 +109,7 @@ export function AccountRow({
 	// Up or not: a thread, a job or a call holds a switch back as the main conversation does.
 	const pending = held === undefined && switching;
 	// A teammate whose every turn is refused runs on nothing.
-	const inUseNow = up && !stranded && !switching ? runningNow : undefined;
+	const inUseNow = up && !stranded && !pending ? runningNow : undefined;
 	// The core refuses an account that does not fit the model, so Keep is offered only for one that does.
 	const keepable = running === SYSTEM_DEFAULT || choices.some((one) => one.id === running);
 
@@ -191,12 +191,14 @@ export function AccountRow({
 								onChange={() => pick(choice.id)}
 							/>
 							<span className="group-row-text">
-								<span className="group-row-title">{choice.name}</span>
-								<span className={signedOut ? "group-row-detail text-warn" : "group-row-detail"} style={{ whiteSpace: "normal" }}>
+								<span className="flex items-center justify-between gap-2">
+									<span className="group-row-title">{choice.name}</span>
+									{inUseNow === choice.id && <span className="shrink-0 text-sm text-ink-3">In use</span>}
+								</span>
+								<span className={signedOut ? "group-row-detail text-warn" : "group-row-detail"} style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>
 									{detail}
 								</span>
 							</span>
-							{inUseNow === choice.id && <span className="shrink-0 text-sm text-ink-3">In use</span>}
 						</label>
 					);
 				})}

@@ -845,9 +845,12 @@ describe("Settings › Providers › Anthropic: Claude Code accounts", () => {
 		await click("Remove account");
 		expect(text()).toContain("Account 1 can't be removed while Ada uses it.");
 		expect(text()).toContain("Give them another account in their settings first; Hotline never moves a teammate to another account for you.");
+		expect(hasButton("Remove account")).toBe(false);
+		expect(hasButton("Sign in again")).toBe(true);
 		await click("OK");
 		expect(named("accounts.remove")).toHaveLength(0);
 		expect(text()).not.toContain("can't be removed");
+		expect(hasButton("Remove account")).toBe(true);
 
 		await click("Back to the team");
 		await openAccount("Account 2");

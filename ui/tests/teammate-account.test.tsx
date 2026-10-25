@@ -515,10 +515,14 @@ describe("a Claude Code teammate's account", () => {
 		await mount({ ...ada, accountId: "a3" }, sessionOf("ready", { running: "a1", wanted: "a3", held: "not_signed_in" }));
 		expect(text()).toContain("Account 3 is not signed in. Ada keeps Account 1 until it is.");
 		expect(text()).not.toContain("Switches to");
+		expect(row("Account 1").textContent).toContain("In use");
+		expect(row("Account 3").textContent).not.toContain("In use");
 
 		await remount({ ...ada, accountId: "a3" }, sessionOf("ready", { running: "a1", wanted: "a3", held: "signing_in" }));
 		expect(text()).toContain("Account 3 is still signing in. Ada keeps Account 1 until it is.");
 		expect(text()).not.toContain("Switches to");
+		expect(row("Account 1").textContent).toContain("In use");
+		expect(row("Account 3").textContent).not.toContain("In use");
 	});
 
 	test("a name refused as taken reads the accounts again, so the account it names is listed", async () => {

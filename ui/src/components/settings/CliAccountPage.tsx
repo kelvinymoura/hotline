@@ -1,4 +1,4 @@
-import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useRef, useState } from "react";
 import type { AccountAgent, AccountsList, AccountView, RosterEntry } from "../../generated/contract";
 import { relativeTime } from "../../dock";
 import { ChevronRightIcon } from "../../icons";
@@ -225,6 +225,14 @@ export function CliAccountPage({
 	const [renaming, setRenaming] = useState(false);
 	const [removing, setRemoving] = useState(false);
 	const [busy, setBusy] = useState(false);
+	const removingRef = useRef<HTMLElement>(null);
+	const okRef = useRef<HTMLButtonElement>(null);
+
+	useEffect(() => {
+		if (!removing) return;
+		okRef.current?.focus();
+		removingRef.current?.scrollIntoView?.({ block: "nearest" });
+	}, [removing]);
 	const name = view.account.name;
 	const status = view.status;
 	const signingHere = cli.signing?.accountId === view.account.id;
@@ -335,8 +343,27 @@ export function CliAccountPage({
 					<p className="group-hint">{agent.name} keeps this account's sign-in, history and settings here.</p>
 				</section>
 			)}
+			{refusal !== null && <Refusal message={refusal} />}
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				{!removing ? (
+					<button type="button" className="control btn-quiet text-danger" disabled={busy} onClick={() => setRemoving(true)}>
+						Remove account
+					</button>
+				) : (
+					<span />
+				)}
+				{!view.canSignInHere ? (
+					<span className="text-sm text-ink-3">Sign in from the desk itself</span>
+				) : (
+					!signing && (
+						<button type="button" className="control btn btn-primary" onClick={() => cli.signIn(view)}>
+							{signedIn ? "Sign in again" : "Sign in"}
+						</button>
+					)
+				)}
+			</div>
 			{removing && (
-				<section className="grouped">
+				<section ref={removingRef} className="grouped">
 					{users.length > 0 ? (
 						<div className="group-row flex-col items-stretch gap-2">
 							<p>
@@ -346,7 +373,7 @@ export function CliAccountPage({
 								Give them another account in their settings first; Hotline never moves a teammate to another account for you.
 							</p>
 							<div className="flex justify-end">
-								<button type="button" className="control btn" onClick={() => setRemoving(false)}>
+								<button ref={okRef} type="button" className="control btn" onClick={() => setRemoving(false)}>
 									OK
 								</button>
 							</div>
@@ -363,21 +390,6 @@ export function CliAccountPage({
 					)}
 				</section>
 			)}
-			{refusal !== null && <Refusal message={refusal} />}
-			<div className="flex items-center justify-between gap-2">
-				<button type="button" className="control btn-quiet text-danger" disabled={busy} onClick={() => setRemoving(true)}>
-					Remove account
-				</button>
-				{!view.canSignInHere ? (
-					<span className="text-sm text-ink-3">Sign in from the desk itself</span>
-				) : (
-					!signing && (
-						<button type="button" className="control btn btn-primary" onClick={() => cli.signIn(view)}>
-							{signedIn ? "Sign in again" : "Sign in"}
-						</button>
-					)
-				)}
-			</div>
 		</AccountFrame>
 	);
 }
