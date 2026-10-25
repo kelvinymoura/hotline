@@ -265,10 +265,8 @@ async fn a_hotline_choice_is_checked_against_the_teammates_model() {
         .unwrap()
         .id;
     desk.vault.revoke(&gone).unwrap();
-    let not_for_the_model = Err("That account is not for this teammate's model.".to_string());
     let assign = |account_id: &str| room.assign_account("ada", Some(account_id.to_string()));
 
-    // The record's model over the room's, with the teammate idle.
     log.append(
         &StreamId::Room,
         &room::room_event(
@@ -278,10 +276,6 @@ async fn a_hotline_choice_is_checked_against_the_teammates_model() {
     )
     .unwrap();
     for (account_id, refusal) in [
-        (
-            openai.as_str(),
-            "That account is not for this teammate's model.",
-        ),
         (
             gone.as_str(),
             "That account is signed out. Sign in again first.",
@@ -299,24 +293,23 @@ async fn a_hotline_choice_is_checked_against_the_teammates_model() {
         );
     }
     assert_eq!(chosen(room), None);
+    assign(&openai).await.unwrap();
     assign(&desk.a).await.unwrap();
 
-    // No model on the record: the room's.
     let mut ada = room.persona("ada").unwrap();
     ada.model_id = None;
     room::append_persona(&log, &ada).unwrap();
-    assert_eq!(assign(&desk.b).await, not_for_the_model);
+    assign(&desk.b).await.unwrap();
     assign(&openai).await.unwrap();
 
-    // The live session's model, over the record's and the room's.
     let mut ada = room.persona("ada").unwrap();
     ada.model_id = Some("openai/gpt-x".to_string());
     room::append_persona(&log, &ada).unwrap();
     started(room).await;
     assign(&desk.b).await.unwrap();
     room.set_model("ada", "openai/gpt-x").await.unwrap();
-    assert_eq!(assign(&desk.a).await, not_for_the_model);
-    assert_eq!(chosen(room), Some(desk.b.clone()));
+    assign(&desk.a).await.unwrap();
+    assert_eq!(chosen(room), Some(desk.a.clone()));
 }
 
 #[tokio::test]

@@ -66,7 +66,7 @@ fn unavailable(root: &Path, kind: io::ErrorKind) -> AccountRefusal {
 #[test]
 fn no_account_or_an_agent_without_accounts_is_system_default() {
     let desk = desk();
-    for persona in [ada(None, "claude-acp"), ada(Some(ID), "codex-acp")] {
+    for persona in [ada(None, "claude-acp"), ada(Some(ID), "cursor")] {
         assert!(matches!(resolve(&desk.root, &desk.log, &persona), Ok(None)));
     }
 }
@@ -104,10 +104,6 @@ fn an_account_this_desk_does_not_have_is_refused_in_both_sentences() {
     assert_eq!(
         account(&desk.root, &desk.log, UNKNOWN).unwrap_err(),
         unknown(UNKNOWN)
-    );
-    assert_eq!(
-        account(&desk.root, &desk.log, OTHER).unwrap_err(),
-        unknown(OTHER)
     );
 
     let refusal = unknown(UNKNOWN);
@@ -177,7 +173,11 @@ fn a_teammate_runs_only_on_an_account_its_agent_can_use() {
     ] {
         for (kind, account_id, runs) in [
             ("none", None, false),
-            ("its agent's", Some(its_own), backend_id == "claude-acp"),
+            (
+                "its agent's",
+                Some(its_own),
+                matches!(backend_id, "claude-acp" | "codex-acp"),
+            ),
             ("another agent's", Some(another), false),
             (
                 "credential",

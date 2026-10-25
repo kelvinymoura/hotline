@@ -291,7 +291,7 @@ async fn refresh_rechecks_the_folder_and_covers_only_accounts_in_use() {
     let b = account_on_disk(&log, B, "Account 2", None);
     for (id, backend_id, account) in [
         ("ada", "claude-acp", A),
-        ("bob", "codex-acp", B),
+        ("bob", "cursor", B),
         ("cy", "claude-acp", "5d0c6a8e-91b4-4c1d-b3a2-7e4f8a2d6c10"),
     ] {
         enrol(

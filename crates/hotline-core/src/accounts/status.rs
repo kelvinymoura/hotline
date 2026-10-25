@@ -64,6 +64,62 @@ fn is_first_party_login_in(answer: &Value, dir: &Path) -> bool {
             .is_some_and(|(named, wanted)| named == wanted)
 }
 
+/// Reads `codex login status` or `auth.json` inside the account folder `dir`.
+pub(crate) fn parse_codex_status(stdout: &[u8], dir: &Path) -> AccountStatusView {
+    let text = String::from_utf8_lossy(stdout);
+    let lower = text.trim().to_ascii_lowercase();
+    if lower.contains("not logged in") || lower.contains("logged out") {
+        return AccountStatusView {
+            state: AccountStatusState::SignedOut,
+            checked_at: None,
+            email: None,
+            plan: None,
+        };
+    }
+    let auth_path = dir.join("auth.json");
+    let auth: Value = std::fs::read(&auth_path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or(Value::Null);
+    let has_tokens = auth.get("tokens").is_some_and(|t| !t.is_null());
+    let has_api_key = auth
+        .get("OPENAI_API_KEY")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.is_empty());
+    if (lower.contains("logged in") || has_tokens) && !has_api_key {
+        let email = auth
+            .pointer("/tokens/email")
+            .or_else(|| auth.get("email"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        let plan = auth
+            .pointer("/tokens/plan")
+            .or_else(|| auth.get("plan"))
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        return AccountStatusView {
+            state: AccountStatusState::SignedIn,
+            checked_at: None,
+            email,
+            plan,
+        };
+    }
+    if auth_path.exists() && !has_tokens && !has_api_key {
+        return AccountStatusView {
+            state: AccountStatusState::SignedOut,
+            checked_at: None,
+            email: None,
+            plan: None,
+        };
+    }
+    AccountStatusView {
+        state: AccountStatusState::Unavailable,
+        checked_at: None,
+        email: None,
+        plan: None,
+    }
+}
+
 pub(crate) const STALE_AFTER_MS: i64 = 600_000;
 
 const STATUS_OUTPUT_LIMIT: u64 = 64 * 1024;

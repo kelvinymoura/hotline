@@ -565,7 +565,7 @@ async fn persona_update_of_reach_reattaches_and_a_name_patch_does_not() {
         json!({
             "id": 3,
             "cmd": "persona.update",
-            "params": { "id": id, "patch": { "name": "Ada Lovelace" } },
+            "params": { "id": id, "patch": { "name": "Ada Lovelace", "allowedSenders": ["bob"] } },
         }),
     )
     .await;
@@ -573,7 +573,7 @@ async fn persona_update_of_reach_reattaches_and_a_name_patch_does_not() {
     assert_eq!(
         quiet.reattached(),
         vec![id.clone()],
-        "a name patch reattached a second time"
+        "a name or allowedSenders patch reattached a second time"
     );
     assert_eq!(*quiet.invalidations.lock().unwrap(), vec![id.clone()]);
 
@@ -635,7 +635,7 @@ async fn an_account_is_set_only_by_persona_account() {
         Err("That account is not on this desk.".to_string())
     );
     assert_eq!(
-        run(&log, &room, "persona.create", create("codex-acp", account)).await,
+        run(&log, &room, "persona.create", create("cursor", account)).await,
         Err("That agent does not use accounts.".to_string())
     );
     assert_eq!(room::roster(&log).len(), 1);

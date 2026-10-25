@@ -531,7 +531,7 @@ async fn an_assignment_is_checked_before_anything_is_written() {
         &room.log,
         &Persona {
             name: "Hal".to_string(),
-            backend_id: "codex-acp".to_string(),
+            backend_id: "cursor".to_string(),
             ..persona("hal")
         },
     );

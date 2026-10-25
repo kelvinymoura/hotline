@@ -8,6 +8,91 @@ use crate::accounts::resolve::AccountRefusal;
 use crate::driver::failure::Failure;
 use crate::{paths, private_dir};
 
+/// Pre-populates `.claude.json` inside an isolated Claude account folder with
+/// `hasTrustDialogAccepted: true` for the teammate's working directory so a
+/// fresh account folder does not block or hang on the interactive workspace
+/// trust prompt.
+fn ensure_account_workspace_trust(
+    account: Option<&crate::accounts::resolve::ResolvedAccount>,
+    cwd: &str,
+) {
+    let Some(account) = account else { return };
+    if account.support.state_file != Some(".claude.json") || cwd.trim().is_empty() {
+        return;
+    }
+    let state_path = account.dir.join(".claude.json");
+    let mut root: serde_json::Value = std::fs::read(&state_path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .filter(|val: &serde_json::Value| val.is_object())
+        .unwrap_or_else(|| serde_json::json!({}));
+    let projects = root
+        .as_object_mut()
+        .expect("object")
+        .entry("projects")
+        .or_insert_with(|| serde_json::json!({}));
+    if !projects.is_object() {
+        *projects = serde_json::json!({});
+    }
+    let mut paths = vec![cwd.to_string()];
+    if let Ok(canon) = dunce::canonicalize(cwd)
+        && let Some(canon_str) = canon.to_str()
+        && canon_str != cwd
+    {
+        paths.push(canon_str.to_string());
+    }
+    let mut changed = false;
+    if let Some(map) = projects.as_object_mut() {
+        for key in paths {
+            let entry = map.entry(key).or_insert_with(|| serde_json::json!({}));
+            if !entry.is_object() {
+                *entry = serde_json::json!({});
+            }
+            if entry.get("hasTrustDialogAccepted") != Some(&serde_json::Value::Bool(true)) {
+                entry["hasTrustDialogAccepted"] = serde_json::Value::Bool(true);
+                changed = true;
+            }
+        }
+    }
+    if changed && let Ok(serialized) = serde_json::to_vec_pretty(&root) {
+        let _ = std::fs::write(&state_path, serialized);
+    }
+}
+
+/// Filters non-JSON-RPC CLI status lines (such as
+/// `{"type":"system","subtype":"permission_check_status"}`) emitted on stdout by
+/// some ACP adapters before or during JSON-RPC framing.
+fn filter_acp_stdout(stdout: tokio::process::ChildStdout) -> tokio::io::DuplexStream {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+    let (mut writer, reader) = tokio::io::duplex(64 * 1024);
+    tokio::spawn(async move {
+        let mut buf_reader = BufReader::new(stdout);
+        let mut line = Vec::new();
+        loop {
+            line.clear();
+            match buf_reader.read_until(b'\n', &mut line).await {
+                Ok(0) | Err(_) => break,
+                Ok(_) => {
+                    let trimmed = line.trim_ascii();
+                    let is_non_rpc_system_line = trimmed.starts_with(b"{")
+                        && serde_json::from_slice::<serde_json::Value>(trimmed).is_ok_and(|val| {
+                            val.get("jsonrpc").is_none()
+                                && val.get("type").and_then(serde_json::Value::as_str)
+                                    == Some("system")
+                        });
+                    if is_non_rpc_system_line {
+                        continue;
+                    }
+                    if writer.write_all(&line).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    reader
+}
+
 impl ChildAgent {
     /// Starts the child in a process group of its own and runs the handshake
     /// over its pipes. [`Driver::start`] bounds the whole of it.
@@ -16,6 +101,7 @@ impl ChildAgent {
         persona: &Persona,
         launch: &registry::Launch,
     ) -> Result<DriverInfo, String> {
+        ensure_account_workspace_trust(self.account.as_ref(), &persona.cwd);
         let mut command = tokio::process::Command::new(&launch.command);
         env_plan(&launch.env, &[], self.account.as_ref()).apply(&mut command);
         command
@@ -55,7 +141,7 @@ impl ChildAgent {
 
         self.handshake(
             persona,
-            ByteStreams::new(stdin.compat_write(), stdout.compat()),
+            ByteStreams::new(stdin.compat_write(), filter_acp_stdout(stdout).compat()),
         )
         .await
     }

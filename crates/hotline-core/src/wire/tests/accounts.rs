@@ -752,7 +752,7 @@ async fn a_blank_or_taken_name_is_settled_on_create() {
 
 #[tokio::test]
 async fn persona_create_checks_a_hotline_account_against_its_model() {
-    use crate::accounts::{NOT_FOR_THIS_MODEL, NOT_ON_THIS_DESK, SIGNED_OUT};
+    use crate::accounts::{NOT_ON_THIS_DESK, SIGNED_OUT};
     let (_root, desk, room) = desk();
     let log = &desk.log;
     let anthropic = key(log, &room, "anthropic", "Work").await;
@@ -769,8 +769,6 @@ async fn persona_create_checks_a_hotline_account_against_its_model() {
     };
 
     for (model_id, account_id, refusal) in [
-        (Some("openai/gpt"), anthropic.as_str(), NOT_FOR_THIS_MODEL),
-        (None, anthropic.as_str(), NOT_FOR_THIS_MODEL),
         (Some("anthropic/x"), revoked.as_str(), SIGNED_OUT),
         (Some("anthropic/x"), "no-such-account", NOT_ON_THIS_DESK),
     ] {

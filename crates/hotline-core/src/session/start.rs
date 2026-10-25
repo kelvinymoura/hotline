@@ -246,7 +246,6 @@ impl Room {
     /// quarantines it and ends its authority, a switch replaces the session.
     fn revoke_teammate(&self, persona_id: &str, close: fn(&CapabilityEpoch)) -> Result<(), String> {
         self.settle_account_switch(&self.persona(persona_id)?);
-        self.forget_informed_collaboration(persona_id);
         {
             let _lifecycle = lock(&self.lifecycle);
             close(&self.capability_epoch(persona_id));

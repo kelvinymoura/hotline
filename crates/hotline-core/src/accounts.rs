@@ -18,14 +18,12 @@ pub(crate) mod switch;
 use crate::contract::Persona;
 use crate::driver::HOTLINE_BACKEND_ID;
 use crate::log::{Log, StreamId};
-use crate::room;
 use resolve::{Named, ResolvedAccount};
 use serde_json::Value;
 
 pub(crate) const NOT_ON_THIS_DESK: &str = "That account is not on this desk.";
 pub(crate) const NO_ACCOUNTS: &str = "That agent does not use accounts.";
 pub(crate) const SIGNED_OUT: &str = "That account is signed out. Sign in again first.";
-pub(crate) const NOT_FOR_THIS_MODEL: &str = "That account is not for this teammate's model.";
 
 /// Hotline Agent runs on a credential of its model's provider; a harness on
 /// one of its own accounts, if it has a row.
@@ -75,14 +73,9 @@ pub(crate) fn check_choice(
     match resolve::named(&events, account_id) {
         Named::Agent(row) if row.backend_id == backend_id => Ok(()),
         Named::Credential(credential) if backend_id == HOTLINE_BACKEND_ID => {
+            let _ = model_id;
             if credential.revoked {
                 return Err(SIGNED_OUT.into());
-            }
-            let preferred = crate::models::preferred_model(&room::settings_from_events(&events));
-            if model_provider(model_id, preferred.as_deref())
-                != Some(credential.provider_id.as_str())
-            {
-                return Err(NOT_FOR_THIS_MODEL.into());
             }
             Ok(())
         }

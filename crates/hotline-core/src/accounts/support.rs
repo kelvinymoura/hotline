@@ -67,7 +67,7 @@ pub(crate) fn account_support(backend_id: &str) -> Option<&'static AccountSuppor
         .map(|(_, row)| *row)
 }
 
-static ROWS: [(&str, &AccountSupport); 1] = [("claude-acp", &CLAUDE)];
+static ROWS: [(&str, &AccountSupport); 2] = [("claude-acp", &CLAUDE), ("codex-acp", &CODEX)];
 
 /// The `open` values of every row's setup. The desk shell is handed a path and
 /// not an agent, so it checks a request against all of them; a folder ends in `/`.
@@ -163,6 +163,52 @@ pub(crate) static CLAUDE: AccountSupport = AccountSupport {
     settings_auth_keys: &["apiKeyHelper", "awsAuthRefresh", "awsCredentialExport"],
 };
 
+pub(crate) static CODEX: AccountSupport = AccountSupport {
+    provider_id: "openai",
+    env_var: "CODEX_HOME",
+    login_args: &["--cli", "login"],
+    email_flag: None,
+    status_args: &["--cli", "login", "status"],
+    parse_status: super::status::parse_codex_status,
+    scrub: &[
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "OPENAI_ORG_ID",
+        "OPENAI_PROJECT_ID",
+        "CODEX_API_KEY",
+        "CODEX_HOME",
+    ],
+    usage_limit_prefixes: &[
+        "You've hit your usage limit",
+        "You've reached your usage limit",
+        "Usage limit reached",
+        "You have exceeded your rate limit",
+    ],
+    home_dir: ".codex",
+    state_file: None,
+    setup: &[
+        SetupCategory {
+            id: "instructions",
+            paths: &["AGENTS.md", "instructions.md"],
+            json_keys: &[],
+            open: "AGENTS.md",
+        },
+        SetupCategory {
+            id: "skills",
+            paths: &["skills"],
+            json_keys: &[],
+            open: "skills/",
+        },
+        SetupCategory {
+            id: "settings",
+            paths: &["config.toml"],
+            json_keys: &[],
+            open: "config.toml",
+        },
+    ],
+    settings_auth_keys: &[],
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,9 +216,10 @@ mod tests {
 
     #[test]
     fn only_claude_code_has_a_row_and_it_carries_the_spec_values() {
-        for none in ["codex-acp", "hotline", ""] {
+        for none in ["cursor", "hotline", ""] {
             assert!(account_support(none).is_none());
         }
+        assert!(account_support("codex-acp").is_some());
         let row = account_support("claude-acp").expect("the one row");
         assert_eq!(
             (row.env_var, row.email_flag),
@@ -257,7 +304,10 @@ mod tests {
                 "skills/",
                 "plugins/",
                 ".claude.json",
-                "settings.json"
+                "settings.json",
+                "AGENTS.md",
+                "skills/",
+                "config.toml"
             ]
         );
     }
