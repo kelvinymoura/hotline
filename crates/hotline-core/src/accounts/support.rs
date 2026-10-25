@@ -166,9 +166,9 @@ pub(crate) static CLAUDE: AccountSupport = AccountSupport {
 pub(crate) static CODEX: AccountSupport = AccountSupport {
     provider_id: "openai",
     env_var: "CODEX_HOME",
-    login_args: &["--cli", "login"],
+    login_args: &["cli", "login"],
     email_flag: None,
-    status_args: &["--cli", "login", "status"],
+    status_args: &["cli", "login", "status"],
     parse_status: super::status::parse_codex_status,
     scrub: &[
         "OPENAI_API_KEY",

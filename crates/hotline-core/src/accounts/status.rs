@@ -65,6 +65,17 @@ fn is_first_party_login_in(answer: &Value, dir: &Path) -> bool {
 }
 
 /// Reads `codex login status` or `auth.json` inside the account folder `dir`.
+fn codex_id_token_claims(auth: &Value) -> Value {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    auth.pointer("/tokens/id_token")
+        .and_then(Value::as_str)
+        .and_then(|jwt| jwt.split('.').nth(1))
+        .and_then(|payload| URL_SAFE_NO_PAD.decode(payload.trim_end_matches('=')).ok())
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or(Value::Null)
+}
+
+/// Reads `codex login status` or `auth.json` inside the account folder `dir`.
 pub(crate) fn parse_codex_status(stdout: &[u8], dir: &Path) -> AccountStatusView {
     let text = String::from_utf8_lossy(stdout);
     let lower = text.trim().to_ascii_lowercase();
@@ -87,14 +98,17 @@ pub(crate) fn parse_codex_status(stdout: &[u8], dir: &Path) -> AccountStatusView
         .and_then(Value::as_str)
         .is_some_and(|s| !s.is_empty());
     if (lower.contains("logged in") || has_tokens) && !has_api_key {
+        let claims = codex_id_token_claims(&auth);
         let email = auth
             .pointer("/tokens/email")
             .or_else(|| auth.get("email"))
+            .or_else(|| claims.get("email"))
             .and_then(Value::as_str)
             .map(str::to_string);
         let plan = auth
             .pointer("/tokens/plan")
             .or_else(|| auth.get("plan"))
+            .or_else(|| claims.pointer("/https:~1~1api.openai.com~1auth/chatgpt_plan_type"))
             .and_then(Value::as_str)
             .map(str::to_string);
         return AccountStatusView {
@@ -104,7 +118,7 @@ pub(crate) fn parse_codex_status(stdout: &[u8], dir: &Path) -> AccountStatusView
             plan,
         };
     }
-    if auth_path.exists() && !has_tokens && !has_api_key {
+    if (!auth_path.exists() && dir.is_dir()) || (auth_path.exists() && !has_tokens && !has_api_key) {
         return AccountStatusView {
             state: AccountStatusState::SignedOut,
             checked_at: None,
@@ -338,7 +352,7 @@ pub(super) async fn run_status(
         .current_dir(&account.dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .kill_on_drop(true);
     #[cfg(unix)]
     command.process_group(0);
@@ -355,23 +369,34 @@ pub(super) async fn run_status(
     let Ok(job) = crate::process_windows::Job::attach(child.id()) else {
         return unavailable();
     };
-    let Some(stdout) = child.stdout.take() else {
+    let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
         acp::end_group(&child);
         return unavailable();
     };
     let mut answer = Vec::new();
-    let answered = tokio::time::timeout(
-        bound,
-        stdout.take(STATUS_OUTPUT_LIMIT).read_to_end(&mut answer),
-    )
+    let mut err_answer = Vec::new();
+    let answered = tokio::time::timeout(bound, async {
+        let mut out_take = stdout.take(STATUS_OUTPUT_LIMIT);
+        let mut err_take = stderr.take(STATUS_OUTPUT_LIMIT);
+        let (out_res, err_res) = tokio::join!(
+            out_take.read_to_end(&mut answer),
+            err_take.read_to_end(&mut err_answer),
+        );
+        out_res.and(err_res)
+    })
     .await;
     acp::end_group(&child);
     #[cfg(windows)]
     if answered.is_err() {
         let _ = job.terminate();
     }
+    let output = if answer.trim_ascii().is_empty() && !err_answer.is_empty() {
+        &err_answer
+    } else {
+        &answer
+    };
     match answered {
-        Ok(Ok(_)) => (account.support.parse_status)(&answer, &account.dir),
+        Ok(Ok(_)) => (account.support.parse_status)(output, &account.dir),
         _ => unavailable(),
     }
 }

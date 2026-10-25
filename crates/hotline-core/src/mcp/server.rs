@@ -833,12 +833,20 @@ impl TeammateTools {
             }
             LIST_TEAMMATES => {
                 let settings = crate::room::settings(room.log());
-                let mut teammates: Vec<Value> = crate::room::roster(room.log())
+                let roster = crate::room::roster(room.log());
+                let caller = roster.iter().find(|p| p.id == self.persona_id).cloned();
+                let mut teammates: Vec<Value> = roster
                     .into_iter()
                     .filter(|persona| persona.id != self.persona_id)
                     .map(|persona| {
                         let peer_id = persona.id.clone();
-                        let profile = profile(&room, &persona, &settings);
+                        let mut profile = profile(&room, &persona, &settings);
+                        if caller
+                            .as_ref()
+                            .is_some_and(|caller| room.collaboration_granted(&persona, caller, false))
+                        {
+                            profile.capabilities.message_teammates = "directly".to_string();
+                        }
                         let mut row = json!(roster_row(&room, persona, profile));
                         let threads = room.handoff_threads_for(&self.persona_id, &peer_id);
                         if !threads.is_empty() {
@@ -910,7 +918,7 @@ impl TeammateTools {
                 });
                 if let Some(thread) = sent.thread {
                     sent_json["note"] = json!(format!(
-                        "{arrives} The work runs in their thread {thread}: to add to it later (a follow-up, a correction, something they asked for), hand off again with thread \"{thread}\", and they take it up with everything said there. Leave thread out to start unrelated work in a new thread."
+                        "{arrives} The work runs in their thread {thread}: to add to it later (a follow-up, a correction, something they asked for), hand off again by omitting thread (or passing thread \"{thread}\"), and they take it up with everything said there. Pass thread \"new\" to start unrelated work in a new thread."
                     ));
                     sent_json["thread"] = json!(thread);
                 }
@@ -1381,7 +1389,11 @@ pub(crate) fn profile(
             web_search,
             image_generation: !crate::session::generate::images_off_in(settings),
             background_work: persona.background_work,
-            message_teammates: if whole_machine && persona.node.is_none() {
+            message_teammates: if (whole_machine && persona.node.is_none())
+                || crate::room::roster(room.log())
+                    .iter()
+                    .any(|other| other.id != persona.id && room.collaboration_granted(persona, other, false))
+            {
                 "directly"
             } else {
                 "after approval"
@@ -1975,6 +1987,16 @@ mod tests {
                 "reach": "workspace",
                 "mcpServers": [],
             })
+        );
+
+        let mut ada = ada();
+        ada.allowed_senders.push("bob".to_string());
+        write_persona(room.log(), ada);
+        let listed = through_rig(&tools(&room), LIST_TEAMMATES, json!({})).await;
+        let parsed: Value = serde_json::from_str(&listed).unwrap();
+        assert_eq!(
+            parsed["teammates"][0]["capabilities"]["messageTeammates"],
+            "directly"
         );
     }
 

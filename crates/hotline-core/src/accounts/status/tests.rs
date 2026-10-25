@@ -332,3 +332,43 @@ async fn a_recheck_runs_its_own_status_even_behind_one_already_running() {
         (SignedOut, SignedIn, SignedIn)
     );
 }
+
+#[test]
+fn codex_status_reads_stderr_empty_folder_and_jwt_claims() {
+    use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+    let (_tmp, dir) = folder();
+    assert_eq!(
+        parse_codex_status(b"", &dir),
+        view(AccountStatusState::SignedOut, None, None)
+    );
+    assert_eq!(
+        parse_codex_status(b"Not logged in\n", &dir),
+        view(AccountStatusState::SignedOut, None, None)
+    );
+    let claims = URL_SAFE_NO_PAD.encode(
+        json!({
+            "email": "codex@example.com",
+            "https://api.openai.com/auth": {
+                "chatgpt_plan_type": "plus"
+            }
+        })
+        .to_string(),
+    );
+    let auth = json!({
+        "auth_mode": "chatgpt",
+        "OPENAI_API_KEY": null,
+        "tokens": {
+            "id_token": format!("eyJhbGciOiJSUzI1NiJ9.{claims}.sig"),
+            "access_token": "tok"
+        }
+    });
+    std::fs::write(dir.join("auth.json"), auth.to_string()).unwrap();
+    assert_eq!(
+        parse_codex_status(b"Logged in using ChatGPT\n", &dir),
+        view(
+            AccountStatusState::SignedIn,
+            Some("codex@example.com"),
+            Some("plus")
+        )
+    );
+}

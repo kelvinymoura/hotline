@@ -152,7 +152,7 @@ impl Room {
     }
 
     /// Whether `caller` may ask `target` to work without the person's card.
-    pub(in crate::session) fn collaboration_granted(
+    pub(crate) fn collaboration_granted(
         &self,
         caller: &Persona,
         target: &Persona,
